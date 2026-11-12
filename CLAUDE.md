@@ -35,6 +35,7 @@ Non ci sono test automatici. Le funzioni pure in `lib/api.js` (per esempio `pars
 - **Variabili d'ambiente:** quelle `NEXT_PUBLIC_*` sono lette in fase di build; su Vercel vanno create con tipo Config, le altre con tipo Secret. Se ne aggiungi una, aggiorna `.env.example` e avvisa che serve impostarla su Vercel.
 - **API:** tutte le rotte in `app/api/` controllano `authorized(request)` e scrivono solo per `OWNER_USER_ID`. Usano la chiave segreta di Supabase, quindi filtrano sempre per utente.
 - **Stile del codice della bacheca:** `board-app.js` è volutamente semplice (funzioni, `var`, stringhe HTML passate da `esc()`). Mantieni lo stesso stile e passa sempre da `esc()` qualsiasi testo che arriva dai dati. Una riscrittura in componenti React si fa solo se Marco la chiede.
+- **Versione:** il numero mostrato nel piè di pagina ("Fatto v0.2") viene da `version` in `package.json` (`0.2.0` si legge `0.2`). A ogni nuova versione che si rilascia aggiornalo lì, insieme a `package-lock.json`.
 - **Modifiche:** piccole e separate; lavora su un ramo e apri una pull request, così Marco prova l'anteprima di Vercel prima di unire.
 
 ## Verifica

@@ -124,6 +124,7 @@ button.chip[aria-pressed="true"]{border-color:var(--lc,var(--accent));background
 .rows .num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;text-align:right;white-space:nowrap}
 .report{max-width:65ch;margin:0}
 .note{color:var(--muted);font-size:12.5px;margin:0}
+.foot{color:var(--muted);font-size:12px;text-align:center;margin-top:8px}
 
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);padding:0;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 32px)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
