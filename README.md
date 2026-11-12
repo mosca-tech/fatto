@@ -15,6 +15,7 @@ Stack: Next.js (Vercel) · Supabase (database, login Google, tempo reale) · Git
 | `app/api/proposals` | Proposte dell'agente email |
 | `lib/` | Collegamento a Supabase e funzioni comuni delle API |
 | `supabase/schema.sql` | Tabelle e regole di accesso |
+| `CLAUDE.md`, `docs/specifiche.md` | Istruzioni per Claude e regole di funzionamento |
 
 ## Configurazione (una volta sola)
 
@@ -60,6 +61,8 @@ curl -X POST https://<tuo-indirizzo>/api/tasks \
   -H "Authorization: Bearer $TASKS_API_TOKEN" -H "Content-Type: application/json" \
   -d '{"title":"Chiamare il fornitore","col":"settimana","labels":["lavoro"]}'
 ```
+
+In alternativa si può mandare una frase intera, come la detta Siri: `{"text":"completare il deck per oggi con label lavoro"}`. L'app ne ricava titolo, colonna, label e l'eventuale "importante".
 
 `col` accetta `oggi`, `settimana`, `mese`, `prima o poi` (predefinito: settimana). La scadenza viene dalla colonna, salvo `due` esplicito (`AAAA-MM-GG`).
 
