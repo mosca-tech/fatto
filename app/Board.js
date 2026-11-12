@@ -10,7 +10,7 @@ export default function Board() {
   const ref = useRef(null);
 
   useEffect(() => {
-    ref.current.innerHTML = MARKUP;
+    ref.current.innerHTML = MARKUP.replace('{{VERSION}}', process.env.APP_VERSION);
     return initBoard(createClient());
   }, []);
 
