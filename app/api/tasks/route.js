@@ -25,6 +25,7 @@ export async function POST(request) {
     const { ids: labels, unknown } = await resolveLabels(sb, body.labels ?? body.label ?? spoken.label);
     const explicitDue = /^\d{4}-\d{2}-\d{2}$/.test(body.due || '') ? body.due : spoken.due || null;
     const due = explicitDue || dueFor(col);
+    const important = !!body.important || !!spoken.important;
     const { data, error } = await sb
       .from('tasks')
       .insert({
@@ -33,7 +34,7 @@ export async function POST(request) {
         col,
         labels,
         est: Math.max(0, parseInt(body.est, 10) || 0),
-        important: !!body.important || !!spoken.important,
+        important,
         note: String(body.note || '').slice(0, 2000),
         due,
         source: String(body.source || (body.text ? 'siri' : 'api')).slice(0, 40),
@@ -43,10 +44,11 @@ export async function POST(request) {
     if (error) throw error;
     // La frase che Siri legge ad alta voce: dice dove è finito il task e se qualcosa non è stato capito.
     const message =
-      `Aggiunto in ${colName(col)}: ${title}` +
+      `Ho aggiunto ${title} in ${colName(col)}` +
+      (important ? ' come task importante' : '') +
       (explicitDue ? `, scade ${dueLabel(explicitDue)}` : '') +
       (unknown.length ? ` (label ${unknown.join(', ')} non trovata)` : labels.length ? '' : ' (senza label)');
-    return NextResponse.json({ id: data.id, col, due, title, labels: labels.length, unknownLabels: unknown, message }, { status: 201 });
+    return NextResponse.json({ id: data.id, col, due, title, important, labels: labels.length, unknownLabels: unknown, message }, { status: 201 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'salvataggio non riuscito' }, { status: 500 });
