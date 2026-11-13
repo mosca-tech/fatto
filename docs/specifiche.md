@@ -8,9 +8,12 @@
 - Su telefono si vede una colonna alla volta, con linguette per cambiare.
 
 ## Scadenze e scaduti
-- La scadenza viene dalla colonna: Oggi = oggi, Questa settimana = domenica, Questo mese = ultimo giorno del mese, Prima o poi = nessuna. Si può cambiare a mano nel task.
-- Un task non completato con scadenza passata è "scaduto": compare in cima alla colonna Oggi, in rosso, con "Scaduto ieri" o "Scaduto da N giorni" e il pulsante "Sposta a oggi". Lo spostamento è solo visivo: il dato non viene riscritto.
-- I task delle altre colonne mostrano "Scade oggi" o "Scade domani".
+- **Scadenza standard:** se non ne scegli una, la scadenza viene dalla colonna: Oggi = oggi, Questa settimana = domenica, Questo mese = ultimo giorno del mese, Prima o poi = nessuna. Cambiando colonna cambia anche la scadenza standard.
+- **Scadenza scelta da te:** una data diversa da quella standard della colonna (in Prima o poi, qualsiasi data). La si imposta nella scheda del task, dalla frase di Siri o dal pulsante dell'API.
+- **La colonna dice quando pensi di farlo, la scadenza può solo anticiparlo.** Con una scadenza scelta da te il task avanza da solo: Prima o poi fino a fine mese, poi Questo mese, nella settimana della scadenza Questa settimana, il giorno della scadenza Oggi. Con scadenza 10 dicembre: Prima o poi fino al 30 novembre, Questo mese dal 1° al 6 dicembre, Questa settimana dal 7 al 9, Oggi il 10. Non torna mai indietro. Le scadenze standard non fanno avanzare il task.
+- **Spostamenti manuali.** Anticipare è libero e la scadenza resta (un task che scade il 10 dicembre si può mettere in Oggi). Rimandare oltre la scadenza no: se la colonna scelta arriva troppo tardi, l'app chiede una nuova scadenza, valida per quella colonna, oppure di togliere la scadenza; con Annulla il task resta dov'è. Lo stesso controllo vale nella scheda del task: non si salva finché colonna e data non sono compatibili. Con una scadenza standard, la scadenza segue la colonna come prima.
+- **Scaduti:** un task non completato con scadenza passata è "scaduto": compare in cima alla colonna Oggi, in rosso, con "Scaduto ieri" o "Scaduto da N giorni" e il pulsante "Sposta a oggi". Lo spostamento è solo visivo finché non lo si conferma: trascinato in Oggi o con il pulsante, la scadenza diventa oggi. Per metterlo in un'altra colonna serve una nuova scadenza.
+- **Etichette:** i task nelle altre colonne mostrano "Scade oggi", "Scade domani" o, per le scadenze scelte da te, "Scade il 10 dic".
 
 ## Ricorrenti
 Frequenze: ogni giorno, settimana, mese, anno. Al completamento di un task ricorrente nasce subito la prossima occorrenza, ma **non compare subito nella sua colonna**: resta "in attesa" fino all'inizio del suo periodo.

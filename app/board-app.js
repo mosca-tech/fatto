@@ -2,7 +2,7 @@
 export function initBoard(sb){
   var ac=new AbortController();
   var COLS=[
-    {id:'later',name:'Prima o poi',hint:'Senza scadenza'},
+    {id:'later',name:'Prima o poi',hint:'Nessuna scadenza vicina'},
     {id:'month',name:'Questo mese',hint:''},
     {id:'week',name:'Questa settimana',hint:''},
     {id:'today',name:'Oggi',hint:'Da chiudere prima di spegnere il PC'},
@@ -14,7 +14,7 @@ export function initBoard(sb){
 
   var tasks=new Map(), labels=new Map(), props=new Map(), db=null, seq=0;
   var filter={labels:new Set(),important:false,late:false,q:''};
-  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false;
+  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today';
 
   var $=function(id){return document.getElementById(id)};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -35,7 +35,28 @@ export function initBoard(sb){
   function daysLate(t){return Math.round((new Date(today()+'T00:00:00')-new Date(dueOf(t)+'T00:00:00'))/864e5)}
   // Prossima occorrenza di un task ricorrente: finché non arriva la sua data resta "in attesa" e si vede in Prima o poi, in grigio.
   function isPending(t){return !!t.startsOn&&t.col!=='done'&&t.startsOn>today()}
-  function shownCol(t){return isPending(t)?'later':isLate(t)?'today':t.col}
+  // La colonna dice quando pensi di farlo; la scadenza può solo anticiparlo (mai rimandarlo).
+  // Vale per le scadenze scelte da te, non per quelle standard della colonna (domenica, ultimo giorno del mese).
+  var RANK={today:0,week:1,month:2,later:3};
+  function colFromDue(d){var tod=today(); return d<=tod?'today':d<=weekEndOf(tod)?'week':d<=monthEndOf(tod)?'month':'later'}
+  function explicitDue(t){
+    var d=t.due; if(!d||t.col==='done') return false;
+    if(t.col==='later') return true;
+    if(t.col==='month') return d!==monthEndOf(d);
+    if(t.col==='week') return dateOf(d).getDay()!==0;
+    return d>today();
+  }
+  function planCol(t){
+    if(t.col==='done'||!explicitDue(t)) return t.col;
+    var c=colFromDue(t.due); return RANK[c]<RANK[t.col]?c:t.col;
+  }
+  // La colonna non è troppo in là rispetto alla scadenza? (Oggi va sempre bene.)
+  function dueFits(col,d){ return !d||col==='done'||col==='today'||RANK[col]<=RANK[colFromDue(d)] }
+  function minDue(col){
+    var tod=today();
+    return col==='week'?addDays(tod,1):col==='month'?addDays(weekEndOf(tod),1):col==='later'?addDays(monthEndOf(tod),1):'';
+  }
+  function shownCol(t){return isPending(t)?'later':isLate(t)?'today':planCol(t)}
 
   try{ var saved=JSON.parse(localStorage.getItem('bacheca.filter')||'null'); if(saved){filter.labels=new Set(saved.labels||[]); filter.important=!!saved.important; if(saved.col) mobileCol=saved.col} }catch(e){}
   try{ propsHidden=localStorage.getItem('bacheca.propsHidden')==='1' }catch(e){}
@@ -128,8 +149,21 @@ export function initBoard(sb){
     var c=col||t.prevCol||'today'; store.patchTask(id,{col:c,doneAt:null,due:dueFor(c)});
   }
   function move(id,col){
-    var t=tasks.get(id); if(!t||(t.col===col&&!isLate(t)&&!isPending(t))) return;
-    if(col==='done') complete(id); else if(t.col==='done') reopen(id,col); else store.patchTask(id,{col:col,due:dueFor(col),startsOn:null});
+    var t=tasks.get(id); if(!t) return;
+    if(col==='done'){ if(t.col!=='done') complete(id); return }
+    if(t.col==='done'){ reopen(id,col); return }
+    if(shownCol(t)===col&&!isLate(t)&&!isPending(t)) return;
+    if(isLate(t)&&col==='today'){ store.patchTask(id,{col:col,due:today(),startsOn:null}); return }
+    if(!explicitDue(t)){ store.patchTask(id,{col:col,due:dueFor(col),startsOn:null}); return }   // scadenza standard: segue la colonna
+    if(dueFits(col,t.due)) store.patchTask(id,{col:col,startsOn:null});                       // anticipare è libero: la scadenza resta
+    else askDue(id,col);                                                                     // rimandare oltre la scadenza no
+  }
+  function askDue(id,col){
+    var t=tasks.get(id), min=minDue(col), name=COLS.filter(function(c){return c.id===col})[0].name;
+    dueMove={id:id,col:col};
+    $('due-msg').textContent='Questo task scade il '+dm(dateOf(t.due))+': in “'+name+'” arriverebbe troppo tardi. Scegli una nuova scadenza dal '+dm(dateOf(min))+' in poi, oppure togli la scadenza.';
+    $('due-new').min=min; $('due-new').value=min;
+    $('dlg-due').showModal();
   }
 
   function matches(t){
@@ -184,9 +218,10 @@ export function initBoard(sb){
         '<button class="replan" type="button" data-replan="'+esc(id)+'">Sposta a oggi</button>';
     } else if(pending){
       badge='<span title="Riappare da solo in questa data">Riappare '+(t.startsOn===ymd(new Date(Date.now()+864e5))?'domani':'il '+dm(dateOf(t.startsOn)))+'</span>';
-    } else if(!done&&due&&t.col!=='today'){
+    } else if(!done&&due&&shownCol(t)!=='today'){
       if(due===today()) badge='<span class="badge soon">Scade oggi</span>';
       else if(due===ymd(new Date(Date.now()+864e5))) badge='<span class="badge soon">Scade domani</span>';
+      else if(explicitDue(t)) badge='<span title="Scadenza">Scade il '+dm(dateOf(due))+'</span>';
     }
     return '<article class="card'+(t.important?' imp':'')+(done?' done':'')+(late?' late':'')+(pending?' pending':'')+'" draggable="true" data-id="'+esc(id)+'">'+
       '<button class="check" type="button" data-check="'+esc(id)+'" aria-label="'+(done?'Riapri':'Segna come fatto')+'">'+(done?'✓':'')+'</button>'+
@@ -281,7 +316,7 @@ export function initBoard(sb){
     var open={}, openN={};
     COLS.forEach(function(c){open[c.id]=0;openN[c.id]=0});
     var lateN=0;
-    tasks.forEach(function(t){ if(t.col!=='done'&&!isPending(t)&&open[t.col]!=null){open[t.col]+=(t.est||0);openN[t.col]++; if(isLate(t)) lateN++} });
+    tasks.forEach(function(t){ var pc=planCol(t); if(t.col!=='done'&&!isPending(t)&&open[pc]!=null){open[pc]+=(t.est||0);openN[pc]++; if(isLate(t)) lateN++} });
 
     var maxD=Math.max.apply(null,cntDay.concat([1]));
     var todayIdx=weekOffset===0?((new Date().getDay()+6)%7):-1;
@@ -335,7 +370,7 @@ export function initBoard(sb){
     var t=id?tasks.get(id):newTask({col:presetCol||mobileCol==='done'?'today':(presetCol||mobileCol),labels:Array.from(filter.labels).filter(function(x){return labels.has(x)})});
     if(!t) return;
     $('dlg-task-title').textContent=id?'Modifica task':'Nuovo task';
-    $('f-title').value=t.title||''; $('f-col').value=t.col||'today';
+    $('f-title').value=t.title||''; $('f-col').value=t.col||'today'; dlgCol=t.col||'today'; $('f-due').setCustomValidity('');
     $('f-est').value=String(EST.indexOf(t.est|0)>=0?(t.est|0):0);
     $('f-due').value=dueOf(t)||''; $('f-rec').value=t.recurring||'none'; $('f-imp').checked=!!t.important; $('f-note').value=t.note||'';
     var sel=new Set(t.labels||[]);
@@ -347,7 +382,11 @@ export function initBoard(sb){
   }
   function saveTask(){
     var title=$('f-title').value.trim(); if(!title) return;
-    var prev=editingId?tasks.get(editingId):null, col=$('f-col').value;
+    var prev=editingId?tasks.get(editingId):null, col=$('f-col').value, dv=$('f-due').value;
+    if(col!=='done'&&dv&&dv!==dueFor(col)&&!dueFits(col,dv)){
+      var fd=$('f-due'); fd.setCustomValidity('Scadenza troppo vicina per questa colonna: scegli dal '+dm(dateOf(minDue(col)))+' in poi, oppure svuota il campo.'); fd.reportValidity(); return;
+    }
+    $('f-due').setCustomValidity('');
     var data=Object.assign({},prev||newTask(),{
       title:title,col:col,est:parseInt($('f-est').value,10)||0,recurring:$('f-rec').value,
       important:$('f-imp').checked,note:$('f-note').value.trim(),
@@ -397,7 +436,22 @@ export function initBoard(sb){
   $('btn-labels').addEventListener('click',function(){renderLabelsDialog(); $('dlg-labels').showModal()});
   $('labels-close').addEventListener('click',function(){$('dlg-labels').close()});
   $('f-cancel').addEventListener('click',function(){$('dlg-task').close()});
-  $('f-col').addEventListener('change',function(){ $('f-due').value=dueFor($('f-col').value)||'' });
+  $('f-col').addEventListener('change',function(){
+    var c=$('f-col').value, d=$('f-due').value;
+    // Una scadenza scelta da te resta (e viene controllata al salvataggio); quella standard segue la colonna.
+    if(!(d&&d!==(dueFor(dlgCol)||''))) $('f-due').value=dueFor(c)||'';
+    dlgCol=c; $('f-due').setCustomValidity('');
+  });
+  $('f-due').addEventListener('input',function(){ this.setCustomValidity('') });
+  $('form-due').addEventListener('submit',function(e){
+    e.preventDefault(); if(!dueMove) return;
+    store.patchTask(dueMove.id,{col:dueMove.col,due:$('due-new').value,startsOn:null}); dueMove=null; $('dlg-due').close();
+  });
+  $('due-clear').addEventListener('click',function(){
+    if(!dueMove) return;
+    store.patchTask(dueMove.id,{col:dueMove.col,due:null,startsOn:null}); dueMove=null; $('dlg-due').close();
+  });
+  $('due-cancel').addEventListener('click',function(){ dueMove=null; $('dlg-due').close() });
   var dayShown=today();
   function tick(){ if(today()!==dayShown){dayShown=today(); renderAll()} }
   var tickId=setInterval(tick,60000); document.addEventListener('visibilitychange',tick,{signal:ac.signal});
