@@ -66,6 +66,8 @@ In alternativa si può mandare una frase intera, come la detta Siri: `{"text":"c
 
 `col` accetta `oggi`, `settimana`, `mese`, `prima o poi` (predefinito: settimana). La scadenza viene dalla colonna, salvo `due` esplicito (`AAAA-MM-GG`).
 
+Nelle frasi dettate sono capiti anche `domani`, `dopodomani`, i giorni della settimana (`entro venerdì`) e `la prossima settimana`: la scadenza è quella detta e la colonna viene scelta di conseguenza. La risposta contiene `message`, la frase che Siri legge, e `unknownLabels` se una label detta non esiste.
+
 Agente email: `GET /api/proposals` restituisce i `sourceKey` già visti; `POST /api/proposals` con `{"proposals":[...]}` aggiunge proposte, ignorando i doppioni.
 
 ## Da fare
