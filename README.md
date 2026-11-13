@@ -13,6 +13,7 @@ Stack: Next.js (Vercel) · Supabase (database, login Google, tempo reale) · Git
 | `app/login`, `app/auth` | Accesso con Google |
 | `app/api/tasks` | Creazione task da Siri / automazioni |
 | `app/api/proposals` | Proposte dell'agente email |
+| `app/api/digest`, `lib/digest.js`, `vercel.json` | Riepilogo di fine giornata per email (cron di Vercel + Resend) |
 | `lib/` | Collegamento a Supabase e funzioni comuni delle API |
 | `supabase/schema.sql` | Tabelle e regole di accesso |
 | `CLAUDE.md`, `docs/specifiche.md` | Istruzioni per Claude e regole di funzionamento |
@@ -41,6 +42,11 @@ Usa account personali, non aziendali.
 1. Apri l'app e accedi con Google: vengono create le label di partenza.
 2. Supabase > Authentication > Users: copia il tuo User ID in `OWNER_USER_ID` su Vercel.
 3. Genera `TASKS_API_TOKEN` (stringa casuale lunga) e fai un nuovo deploy.
+
+### 5. Riepilogo di fine giornata (email)
+1. Crea un account su resend.com e una chiave API con permesso "Sending access".
+2. Su Vercel > Settings > Environment Variables aggiungi, tutte di tipo Secret: `RESEND_API_KEY` (la chiave), `DIGEST_TO` (dove vuoi riceverlo: senza un dominio verificato su Resend deve essere l'email con cui hai creato l'account Resend) e `CRON_SECRET` (una stringa lunga a piacere, almeno 24 caratteri). `DIGEST_FROM` è facoltativa.
+3. Fai un nuovo deploy. Per provarlo subito: Vercel > Settings > Cron Jobs > Run, oppure `curl -H "Authorization: Bearer $CRON_SECRET" "https://<tuo-indirizzo>/api/digest?dry=1"` per vedere l'anteprima senza inviare.
 
 ## Sviluppo in locale
 
@@ -73,5 +79,5 @@ Agente email: `GET /api/proposals` restituisce i `sourceKey` già visti; `POST /
 ## Da fare
 
 - Migrazione dei dati dal prototipo.
-- Promemoria e riepilogo giornaliero (cron + email o notifiche).
+- Promemoria durante la giornata (cron + email o notifiche).
 - Storico "Fatto" oltre le 1000 righe (oggi la bacheca carica tutti i task in una sola lettura).

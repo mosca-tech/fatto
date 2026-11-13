@@ -2,7 +2,7 @@
 export function initBoard(sb){
   var ac=new AbortController();
   var COLS=[
-    {id:'later',name:'Prima o poi',hint:'Senza scadenza'},
+    {id:'later',name:'Prima o poi',hint:'Nessuna scadenza vicina'},
     {id:'month',name:'Questo mese',hint:''},
     {id:'week',name:'Questa settimana',hint:''},
     {id:'today',name:'Oggi',hint:'Da chiudere prima di spegnere il PC'},
@@ -10,12 +10,11 @@ export function initBoard(sb){
   ];
   var EST=[0,15,30,45,60,90,120,180,240,480];
   var NCOL=8, DAYS=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'], DAYS_LONG=['lunedì','martedì','mercoledì','giovedì','venerdì','sabato','domenica'];
-  var REC={daily:'ogni giorno',weekly:'ogni settimana',monthly:'ogni mese'};
-  var REC_COL={daily:'today',weekly:'week',monthly:'month'};
+  var REC={daily:'ogni giorno',weekly:'ogni settimana',monthly:'ogni mese',yearly:'ogni anno'};
 
   var tasks=new Map(), labels=new Map(), props=new Map(), db=null, seq=0;
   var filter={labels:new Set(),important:false,late:false,q:''};
-  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false;
+  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today';
 
   var $=function(id){return document.getElementById(id)};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -34,7 +33,30 @@ export function initBoard(sb){
   function dueOf(t){ if(t.col==='done') return null; if(t.due!==undefined) return t.due; return dueFor(t.col,t.createdAt) }
   function isLate(t){var d=dueOf(t); return !!d&&d<today()}
   function daysLate(t){return Math.round((new Date(today()+'T00:00:00')-new Date(dueOf(t)+'T00:00:00'))/864e5)}
-  function shownCol(t){return isLate(t)?'today':t.col}
+  // Prossima occorrenza di un task ricorrente: finché non arriva la sua data resta "in attesa" e si vede in Prima o poi, in grigio.
+  function isPending(t){return !!t.startsOn&&t.col!=='done'&&t.startsOn>today()}
+  // La colonna dice quando pensi di farlo; la scadenza può solo anticiparlo (mai rimandarlo).
+  // Vale per le scadenze scelte da te, non per quelle standard della colonna (domenica, ultimo giorno del mese).
+  var RANK={today:0,week:1,month:2,later:3};
+  function colFromDue(d){var tod=today(); return d<=tod?'today':d<=weekEndOf(tod)?'week':d<=monthEndOf(tod)?'month':'later'}
+  function explicitDue(t){
+    var d=t.due; if(!d||t.col==='done') return false;
+    if(t.col==='later') return true;
+    if(t.col==='month') return d!==monthEndOf(d);
+    if(t.col==='week') return dateOf(d).getDay()!==0;
+    return d>today();
+  }
+  function planCol(t){
+    if(t.col==='done'||!explicitDue(t)) return t.col;
+    var c=colFromDue(t.due); return RANK[c]<RANK[t.col]?c:t.col;
+  }
+  // La colonna non è troppo in là rispetto alla scadenza? (Oggi va sempre bene.)
+  function dueFits(col,d){ return !d||col==='done'||col==='today'||RANK[col]<=RANK[colFromDue(d)] }
+  function minDue(col){
+    var tod=today();
+    return col==='week'?addDays(tod,1):col==='month'?addDays(weekEndOf(tod),1):col==='later'?addDays(monthEndOf(tod),1):'';
+  }
+  function shownCol(t){return isPending(t)?'later':isLate(t)?'today':planCol(t)}
 
   try{ var saved=JSON.parse(localStorage.getItem('bacheca.filter')||'null'); if(saved){filter.labels=new Set(saved.labels||[]); filter.important=!!saved.important; if(saved.col) mobileCol=saved.col} }catch(e){}
   try{ propsHidden=localStorage.getItem('bacheca.propsHidden')==='1' }catch(e){}
@@ -49,14 +71,14 @@ export function initBoard(sb){
   }
   function taskRow(d){
     return {title:d.title||'',col:d.col||'today',labels:d.labels||[],est:d.est|0,important:!!d.important,recurring:d.recurring||'none',
-      note:d.note||'',due:d.due||null,source:d.source||null,prev_col:d.prevCol||null,created_at:d.createdAt||nowISO(),done_at:d.doneAt||null};
+      note:d.note||'',due:d.due||null,source:d.source||null,prev_col:d.prevCol||null,created_at:d.createdAt||nowISO(),done_at:d.doneAt||null,starts_on:d.startsOn||null};
   }
   function taskObj(r){
     return {title:r.title,col:r.col,labels:r.labels||[],est:r.est||0,important:!!r.important,recurring:r.recurring||'none',
-      note:r.note||'',due:r.due||null,source:r.source||null,prevCol:r.prev_col||null,createdAt:r.created_at,doneAt:r.done_at||null};
+      note:r.note||'',due:r.due||null,source:r.source||null,prevCol:r.prev_col||null,createdAt:r.created_at,doneAt:r.done_at||null,startsOn:r.starts_on||null};
   }
   function patchRow(p){
-    var m={prevCol:'prev_col',doneAt:'done_at',createdAt:'created_at'}, o={};
+    var m={prevCol:'prev_col',doneAt:'done_at',createdAt:'created_at',startsOn:'starts_on'}, o={};
     Object.keys(p).forEach(function(k){ o[m[k]||k]=p[k] }); return o;
   }
   // Ogni modifica si vede subito a schermo e poi viene salvata; se il salvataggio fallisce si ricarica dal database.
@@ -90,22 +112,58 @@ export function initBoard(sb){
 
   /* ---------- task logic ---------- */
   function nowISO(){return new Date().toISOString()}
-  function newTask(over){ var t=Object.assign({title:'',col:'today',labels:[],est:0,important:false,recurring:'none',note:'',createdAt:nowISO(),doneAt:null,prevCol:null},over||{}); if(t.due===undefined) t.due=dueFor(t.col); return t }
+  function newTask(over){ var t=Object.assign({title:'',col:'today',labels:[],est:0,important:false,recurring:'none',note:'',createdAt:nowISO(),doneAt:null,prevCol:null,startsOn:null},over||{}); if(t.due===undefined) t.due=dueFor(t.col); return t }
+  /* Date delle ricorrenze (giorni locali, formato AAAA-MM-GG). */
+  function dateOf(s){return new Date(s+'T00:00:00')}
+  function addDays(s,n){var d=dateOf(s); d.setDate(d.getDate()+n); return ymd(d)}
+  function weekEndOf(s){return addDays(s,(7-dateOf(s).getDay())%7)}
+  function monthEndOf(s){var d=dateOf(s); return ymd(new Date(d.getFullYear(),d.getMonth()+1,0))}
+  // Aggiunge n mesi: un giorno a fine mese resta a fine mese, un 30 diventa 28 a febbraio.
+  function addMonths(s,n){
+    var d=dateOf(s), last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(), end=d.getDate()===last;
+    var first=new Date(d.getFullYear(),d.getMonth()+n,1), ml=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+    return ymd(new Date(first.getFullYear(),first.getMonth(),end?ml:Math.min(d.getDate(),ml)));
+  }
+  // La nuova scadenza parte da quella del task completato (non dal giorno in cui lo chiudi) e va avanti
+  // finché cade dopo il periodo in corso: un task completato in ritardo non riappare già scaduto.
+  function nextOccurrence(t){
+    var tod=today(), base=/^\d{4}-\d{2}-\d{2}$/.test(t.due||'')?t.due:tod, due, k;
+    if(t.recurring==='daily'){ for(k=1;;k++){ due=addDays(base,k); if(due>tod) break } return {col:'today',due:due,startsOn:due} }
+    if(t.recurring==='weekly'){ for(k=1;;k++){ due=addDays(base,7*k); if(due>weekEndOf(tod)) break } return {col:'week',due:due,startsOn:addDays(weekEndOf(due),-6)} }
+    if(t.recurring==='monthly'){ for(k=1;;k++){ due=addMonths(base,k); if(due>monthEndOf(tod)) break } return {col:'month',due:due,startsOn:due.slice(0,8)+'01'} }
+    for(k=1;;k++){ due=addMonths(base,12*k); if(due>tod) break }
+    return {col:'month',due:due,startsOn:due.slice(0,8)+'01'};
+  }
   function spawnRecurrence(t){
     if(!t.recurring||t.recurring==='none') return;
-    store.setTask(null,newTask({title:t.title,labels:(t.labels||[]).slice(),est:t.est||0,important:!!t.important,recurring:t.recurring,note:t.note||'',col:REC_COL[t.recurring]||'week'}));
+    var n=nextOccurrence(t);
+    store.setTask(null,newTask({title:t.title,labels:(t.labels||[]).slice(),est:t.est||0,important:!!t.important,recurring:t.recurring,note:t.note||'',
+      col:n.col,due:n.due,startsOn:n.startsOn>today()?n.startsOn:null}));
   }
   function complete(id){
     var t=tasks.get(id); if(!t||t.col==='done') return;
-    store.patchTask(id,{col:'done',prevCol:t.col,doneAt:nowISO()}).then(function(){ spawnRecurrence(t) });
+    store.patchTask(id,{col:'done',prevCol:t.col,doneAt:nowISO(),startsOn:null}).then(function(){ spawnRecurrence(t) });
   }
   function reopen(id,col){
     var t=tasks.get(id); if(!t) return;
     var c=col||t.prevCol||'today'; store.patchTask(id,{col:c,doneAt:null,due:dueFor(c)});
   }
   function move(id,col){
-    var t=tasks.get(id); if(!t||(t.col===col&&!isLate(t))) return;
-    if(col==='done') complete(id); else if(t.col==='done') reopen(id,col); else store.patchTask(id,{col:col,due:dueFor(col)});
+    var t=tasks.get(id); if(!t) return;
+    if(col==='done'){ if(t.col!=='done') complete(id); return }
+    if(t.col==='done'){ reopen(id,col); return }
+    if(shownCol(t)===col&&!isLate(t)&&!isPending(t)) return;
+    if(isLate(t)&&col==='today'){ store.patchTask(id,{col:col,due:today(),startsOn:null}); return }
+    if(!explicitDue(t)){ store.patchTask(id,{col:col,due:dueFor(col),startsOn:null}); return }   // scadenza standard: segue la colonna
+    if(dueFits(col,t.due)) store.patchTask(id,{col:col,startsOn:null});                       // anticipare è libero: la scadenza resta
+    else askDue(id,col);                                                                     // rimandare oltre la scadenza no
+  }
+  function askDue(id,col){
+    var t=tasks.get(id), min=minDue(col), name=COLS.filter(function(c){return c.id===col})[0].name;
+    dueMove={id:id,col:col};
+    $('due-msg').textContent='Questo task scade il '+dm(dateOf(t.due))+': in “'+name+'” arriverebbe troppo tardi. Scegli una nuova scadenza dal '+dm(dateOf(min))+' in poi, oppure togli la scadenza.';
+    $('due-new').min=min; $('due-new').value=min;
+    $('dlg-due').showModal();
   }
 
   function matches(t){
@@ -128,6 +186,7 @@ export function initBoard(sb){
     });
     out.sort(function(a,b){
       if(col==='done') return String(b.t.doneAt||'').localeCompare(String(a.t.doneAt||''));
+      var pa=isPending(a.t), pb=isPending(b.t); if(pa!==pb) return pa?1:-1;
       var la=isLate(a.t), lb=isLate(b.t); if(la!==lb) return la?-1:1;
       if(!!b.t.important!==!!a.t.important) return b.t.important?1:-1;
       return String(a.t.createdAt||'').localeCompare(String(b.t.createdAt||''));
@@ -152,32 +211,35 @@ export function initBoard(sb){
     return '<span class="chip" style="--lc:'+lc(l)+'"><span class="dot"></span>'+esc(l.name)+'</span>';
   }
   function cardHTML(id,t){
-    var done=t.col==='done', late=!done&&isLate(t), due=dueOf(t), badge='';
+    var done=t.col==='done', late=!done&&isLate(t), due=dueOf(t), badge='', pending=isPending(t), rec=t.recurring&&t.recurring!=='none';
     if(late){
       var n=daysLate(t), from=t.col!=='today'?COLS.filter(function(c){return c.id===t.col})[0]:null;
       badge='<span class="badge late">'+(n===1?'Scaduto ieri':'Scaduto da '+n+' giorni')+'</span>'+(from?'<span>da '+esc(from.name)+'</span>':'')+
         '<button class="replan" type="button" data-replan="'+esc(id)+'">Sposta a oggi</button>';
-    } else if(!done&&due&&t.col!=='today'){
+    } else if(pending){
+      badge='<span title="Riappare da solo in questa data">Riappare '+(t.startsOn===ymd(new Date(Date.now()+864e5))?'domani':'il '+dm(dateOf(t.startsOn)))+'</span>';
+    } else if(!done&&due&&shownCol(t)!=='today'){
       if(due===today()) badge='<span class="badge soon">Scade oggi</span>';
       else if(due===ymd(new Date(Date.now()+864e5))) badge='<span class="badge soon">Scade domani</span>';
+      else if(explicitDue(t)) badge='<span title="Scadenza">Scade il '+dm(dateOf(due))+'</span>';
     }
-    return '<article class="card'+(t.important?' imp':'')+(done?' done':'')+(late?' late':'')+'" draggable="true" data-id="'+esc(id)+'">'+
+    return '<article class="card'+(t.important?' imp':'')+(done?' done':'')+(late?' late':'')+(pending?' pending':'')+'" draggable="true" data-id="'+esc(id)+'">'+
       '<button class="check" type="button" data-check="'+esc(id)+'" aria-label="'+(done?'Riapri':'Segna come fatto')+'">'+(done?'✓':'')+'</button>'+
-      '<div class="cbody"><button class="ctitle" type="button" data-open="'+esc(id)+'">'+esc(t.title||'(senza titolo)')+'</button>'+
+      '<div class="cbody"><button class="ctitle" type="button" data-open="'+esc(id)+'">'+(rec?'<span class="recicon" role="img" title="Ricorrente: '+esc(REC[t.recurring]||'')+'" aria-label="Ricorrente: '+esc(REC[t.recurring]||'')+'">↻</span> ':'')+esc(t.title||'(senza titolo)')+'</button>'+
       '<div class="cmeta">'+(t.important?'<span class="star" title="Importante">★</span>':'')+badge+(t.source?'<span title="Creato da un’email">✉ email</span>':'')+
       (t.labels||[]).map(chipHTML).join('')+
       (t.est?'<span class="est">'+fmt(t.est)+'</span>':'')+
-      (t.recurring&&t.recurring!=='none'?'<span title="Ricorrente">↻ '+esc(REC[t.recurring]||'')+'</span>':'')+
+      (rec?'<span title="Ricorrente">'+esc(REC[t.recurring]||'')+'</span>':'')+
       '</div></div></article>';
   }
   function renderBoard(){
     var tabs='';
     COLS.forEach(function(c){
-      var items=colTasks(c.id), mins=items.reduce(function(s,x){return s+(x.t.est||0)},0);
-      $('stat-'+c.id).textContent=items.length+(mins?' · '+fmt(mins):'');
+      var items=colTasks(c.id), active=items.filter(function(x){return !isPending(x.t)}), mins=active.reduce(function(s,x){return s+(x.t.est||0)},0);
+      $('stat-'+c.id).textContent=active.length+(mins?' · '+fmt(mins):'');
       $('list-'+c.id).innerHTML=items.length?items.map(function(x){return cardHTML(x.id,x.t)}).join(''):
         '<div class="empty">'+(c.id==='done'?'Niente completato negli ultimi 7 giorni.':'Nessun task qui.')+'</div>';
-      tabs+='<button type="button" role="tab" data-tab="'+c.id+'" aria-selected="'+(mobileCol===c.id)+'">'+esc(c.name)+'<span class="n">'+items.length+'</span></button>';
+      tabs+='<button type="button" role="tab" data-tab="'+c.id+'" aria-selected="'+(mobileCol===c.id)+'">'+esc(c.name)+'<span class="n">'+active.length+'</span></button>';
     });
     $('coltabs').innerHTML=tabs;
     document.querySelectorAll('.col').forEach(function(el){el.classList.toggle('active',el.dataset.col===mobileCol)});
@@ -254,7 +316,7 @@ export function initBoard(sb){
     var open={}, openN={};
     COLS.forEach(function(c){open[c.id]=0;openN[c.id]=0});
     var lateN=0;
-    tasks.forEach(function(t){ if(t.col!=='done'&&open[t.col]!=null){open[t.col]+=(t.est||0);openN[t.col]++; if(isLate(t)) lateN++} });
+    tasks.forEach(function(t){ var pc=planCol(t); if(t.col!=='done'&&!isPending(t)&&open[pc]!=null){open[pc]+=(t.est||0);openN[pc]++; if(isLate(t)) lateN++} });
 
     var maxD=Math.max.apply(null,cntDay.concat([1]));
     var todayIdx=weekOffset===0?((new Date().getDay()+6)%7):-1;
@@ -308,7 +370,7 @@ export function initBoard(sb){
     var t=id?tasks.get(id):newTask({col:presetCol||mobileCol==='done'?'today':(presetCol||mobileCol),labels:Array.from(filter.labels).filter(function(x){return labels.has(x)})});
     if(!t) return;
     $('dlg-task-title').textContent=id?'Modifica task':'Nuovo task';
-    $('f-title').value=t.title||''; $('f-col').value=t.col||'today';
+    $('f-title').value=t.title||''; $('f-col').value=t.col||'today'; dlgCol=t.col||'today'; $('f-due').setCustomValidity('');
     $('f-est').value=String(EST.indexOf(t.est|0)>=0?(t.est|0):0);
     $('f-due').value=dueOf(t)||''; $('f-rec').value=t.recurring||'none'; $('f-imp').checked=!!t.important; $('f-note').value=t.note||'';
     var sel=new Set(t.labels||[]);
@@ -320,7 +382,11 @@ export function initBoard(sb){
   }
   function saveTask(){
     var title=$('f-title').value.trim(); if(!title) return;
-    var prev=editingId?tasks.get(editingId):null, col=$('f-col').value;
+    var prev=editingId?tasks.get(editingId):null, col=$('f-col').value, dv=$('f-due').value;
+    if(col!=='done'&&dv&&dv!==dueFor(col)&&!dueFits(col,dv)){
+      var fd=$('f-due'); fd.setCustomValidity('Scadenza troppo vicina per questa colonna: scegli dal '+dm(dateOf(minDue(col)))+' in poi, oppure svuota il campo.'); fd.reportValidity(); return;
+    }
+    $('f-due').setCustomValidity('');
     var data=Object.assign({},prev||newTask(),{
       title:title,col:col,est:parseInt($('f-est').value,10)||0,recurring:$('f-rec').value,
       important:$('f-imp').checked,note:$('f-note').value.trim(),
@@ -329,6 +395,7 @@ export function initBoard(sb){
     var justDone=col==='done'&&(!prev||prev.col!=='done');
     if(justDone){data.doneAt=nowISO(); data.prevCol=prev?prev.col:'today'}
     if(col!=='done'){data.doneAt=null; data.due=$('f-due').value||null}
+    if(!prev||col!==prev.col||col==='done') data.startsOn=null;
     store.setTask(editingId,data).then(function(){ if(justDone) spawnRecurrence(data) });
     $('dlg-task').close();
   }
@@ -369,7 +436,22 @@ export function initBoard(sb){
   $('btn-labels').addEventListener('click',function(){renderLabelsDialog(); $('dlg-labels').showModal()});
   $('labels-close').addEventListener('click',function(){$('dlg-labels').close()});
   $('f-cancel').addEventListener('click',function(){$('dlg-task').close()});
-  $('f-col').addEventListener('change',function(){ $('f-due').value=dueFor($('f-col').value)||'' });
+  $('f-col').addEventListener('change',function(){
+    var c=$('f-col').value, d=$('f-due').value;
+    // Una scadenza scelta da te resta (e viene controllata al salvataggio); quella standard segue la colonna.
+    if(!(d&&d!==(dueFor(dlgCol)||''))) $('f-due').value=dueFor(c)||'';
+    dlgCol=c; $('f-due').setCustomValidity('');
+  });
+  $('f-due').addEventListener('input',function(){ this.setCustomValidity('') });
+  $('form-due').addEventListener('submit',function(e){
+    e.preventDefault(); if(!dueMove) return;
+    store.patchTask(dueMove.id,{col:dueMove.col,due:$('due-new').value,startsOn:null}); dueMove=null; $('dlg-due').close();
+  });
+  $('due-clear').addEventListener('click',function(){
+    if(!dueMove) return;
+    store.patchTask(dueMove.id,{col:dueMove.col,due:null,startsOn:null}); dueMove=null; $('dlg-due').close();
+  });
+  $('due-cancel').addEventListener('click',function(){ dueMove=null; $('dlg-due').close() });
   var dayShown=today();
   function tick(){ if(today()!==dayShown){dayShown=today(); renderAll()} }
   var tickId=setInterval(tick,60000); document.addEventListener('visibilitychange',tick,{signal:ac.signal});

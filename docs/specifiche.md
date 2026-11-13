@@ -8,12 +8,19 @@
 - Su telefono si vede una colonna alla volta, con linguette per cambiare.
 
 ## Scadenze e scaduti
-- La scadenza viene dalla colonna: Oggi = oggi, Questa settimana = domenica, Questo mese = ultimo giorno del mese, Prima o poi = nessuna. Si può cambiare a mano nel task.
-- Un task non completato con scadenza passata è "scaduto": compare in cima alla colonna Oggi, in rosso, con "Scaduto ieri" o "Scaduto da N giorni" e il pulsante "Sposta a oggi". Lo spostamento è solo visivo: il dato non viene riscritto.
-- I task delle altre colonne mostrano "Scade oggi" o "Scade domani".
+- **Scadenza standard:** se non ne scegli una, la scadenza viene dalla colonna: Oggi = oggi, Questa settimana = domenica, Questo mese = ultimo giorno del mese, Prima o poi = nessuna. Cambiando colonna cambia anche la scadenza standard.
+- **Scadenza scelta da te:** una data diversa da quella standard della colonna (in Prima o poi, qualsiasi data). La si imposta nella scheda del task, dalla frase di Siri o dal pulsante dell'API.
+- **La colonna dice quando pensi di farlo, la scadenza può solo anticiparlo.** Con una scadenza scelta da te il task avanza da solo: Prima o poi fino a fine mese, poi Questo mese, nella settimana della scadenza Questa settimana, il giorno della scadenza Oggi. Con scadenza 10 dicembre: Prima o poi fino al 30 novembre, Questo mese dal 1° al 6 dicembre, Questa settimana dal 7 al 9, Oggi il 10. Non torna mai indietro. Le scadenze standard non fanno avanzare il task.
+- **Spostamenti manuali.** Anticipare è libero e la scadenza resta (un task che scade il 10 dicembre si può mettere in Oggi). Rimandare oltre la scadenza no: se la colonna scelta arriva troppo tardi, l'app chiede una nuova scadenza, valida per quella colonna, oppure di togliere la scadenza; con Annulla il task resta dov'è. Lo stesso controllo vale nella scheda del task: non si salva finché colonna e data non sono compatibili. Con una scadenza standard, la scadenza segue la colonna come prima.
+- **Scaduti:** un task non completato con scadenza passata è "scaduto": compare in cima alla colonna Oggi, in rosso, con "Scaduto ieri" o "Scaduto da N giorni" e il pulsante "Sposta a oggi". Lo spostamento è solo visivo finché non lo si conferma: trascinato in Oggi o con il pulsante, la scadenza diventa oggi. Per metterlo in un'altra colonna serve una nuova scadenza.
+- **Etichette:** i task nelle altre colonne mostrano "Scade oggi", "Scade domani" o, per le scadenze scelte da te, "Scade il 10 dic".
 
 ## Ricorrenti
-Al completamento di un task ricorrente nasce una copia nella colonna corrispondente: ogni giorno → Oggi, ogni settimana → Questa settimana, ogni mese → Questo mese.
+Frequenze: ogni giorno, settimana, mese, anno. Al completamento di un task ricorrente nasce subito la prossima occorrenza, ma **non compare subito nella sua colonna**: resta "in attesa" fino all'inizio del suo periodo.
+- **Quando riappare:** ogni giorno → il giorno dopo, in Oggi; ogni settimana → il lunedì successivo, in Questa settimana; ogni mese → il primo del mese dopo, in Questo mese; ogni anno → il primo del mese di scadenza, in Questo mese.
+- **Nuova scadenza:** parte dalla scadenza del task completato, non dal giorno in cui lo si chiude, e va avanti finché cade dopo il periodo in corso (un task chiuso in ritardo non riappare già scaduto). Un giorno di fine mese resta di fine mese.
+- **In attesa:** si vede in Prima o poi, in grigio e tratteggiato, con "Riappare il 1 dic" (o "domani"). Si può aprire, modificare o eliminare, e così si ferma la ricorrenza. Non entra nei conteggi delle colonne né nel carico aperto delle analytics. Alla data prevista si sposta da solo nella colonna giusta. Trascinarlo in una colonna, o cambiarne la colonna nella scheda, lo attiva subito.
+- **Icona:** i task ricorrenti hanno una piccola ↻ accanto al titolo.
 
 ## Analytics
 Vista settimanale (lunedì–domenica): task completati, tempo stimato completato, importanti completati, completati per giorno, tempo per label, carico aperto per colonna, scaduti, report testuale da copiare.
@@ -31,15 +38,22 @@ Un Comando Rapido su iPhone ("Nuovo task") detta una frase e la invia a `POST /a
 - **Label:** si dice "con label lavoro" (una parola); maiuscole e accenti non contano. Se non esiste, il task viene creato lo stesso senza label e la risposta lo dice.
 - **Risposta:** il campo `message` è la frase che Siri legge, per esempio "Ho aggiunto Chiamare Rossi in Questa settimana come task importante, scade domani" (la parte "come task importante" solo se lo è).
 
+## Riepilogo di fine giornata (email)
+Ogni sera arriva una email semplice, mandata con Resend da una attività pianificata di Vercel (`vercel.json`, `GET /api/digest`, alle 17:30 UTC: 18:30 in inverno e 19:30 con l'ora legale; sul piano gratuito l'orario può slittare di circa un'ora). Tre blocchi:
+- **Completati oggi:** i task chiusi nella giornata (giorno di Roma).
+- **Ancora da fare oggi:** i task che la bacheca mostra in Oggi e non sono scaduti.
+- **Scaduti e in scadenza:** prima gli scaduti ("scaduto ieri", "scaduto da N giorni"), poi quelli che scadono nei prossimi 3 giorni. Contano solo le scadenze scelte dall'utente, non quelle standard della colonna. Le ricorrenze "in attesa" non compaiono.
+Si manda anche a giornata vuota. Con `?dry=1` l'API mostra l'anteprima senza inviare. Variabili d'ambiente: `RESEND_API_KEY`, `DIGEST_TO`, `DIGEST_FROM` (facoltativa), `CRON_SECRET`.
+
 ## Modello dati
-- `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly), note, due, source, prev_col, created_at, done_at`
+- `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly|yearly), note, due, source, prev_col, created_at, done_at, starts_on` (`starts_on`: data da cui un'occorrenza ricorrente diventa attiva; prima di quella data è "in attesa")
 - `labels`: `name, color (0–7)`
 - `proposals`: `title, labels uuid[], source, sender, subject, reason, confidence (alta|media|bassa), status (new|accepted|dismissed), link, source_key, created_at, decided_at`
 
 ## Roadmap
 1. Migrazione dei dati dal prototipo.
 2. Agente email: farlo scrivere su `/api/proposals`.
-3. Promemoria e riepilogo giornaliero di scaduti e in scadenza (cron, email o notifiche).
+3. ~~Riepilogo giornaliero di scaduti e in scadenza~~ (fatto, vedi sopra). Resta da valutare un promemoria durante la giornata (cron, email o notifiche).
 4. Flag "New": marcare i task aggiunti dopo la pianificazione del lunedì mattina.
 5. Gamification: punti in base al rispetto del piano giornaliero, settimanale, mensile.
 6. Storico "Fatto" oltre le 1000 righe.
