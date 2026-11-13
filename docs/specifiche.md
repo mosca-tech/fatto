@@ -38,6 +38,13 @@ Un Comando Rapido su iPhone ("Nuovo task") detta una frase e la invia a `POST /a
 - **Label:** si dice "con label lavoro" (una parola); maiuscole e accenti non contano. Se non esiste, il task viene creato lo stesso senza label e la risposta lo dice.
 - **Risposta:** il campo `message` è la frase che Siri legge, per esempio "Ho aggiunto Chiamare Rossi in Questa settimana come task importante, scade domani" (la parte "come task importante" solo se lo è).
 
+## Riepilogo di fine giornata (email)
+Ogni sera arriva una email semplice, mandata con Resend da una attività pianificata di Vercel (`vercel.json`, `GET /api/digest`, alle 17:30 UTC: 18:30 in inverno e 19:30 con l'ora legale; sul piano gratuito l'orario può slittare di circa un'ora). Tre blocchi:
+- **Completati oggi:** i task chiusi nella giornata (giorno di Roma).
+- **Ancora da fare oggi:** i task che la bacheca mostra in Oggi e non sono scaduti.
+- **Scaduti e in scadenza:** prima gli scaduti ("scaduto ieri", "scaduto da N giorni"), poi quelli che scadono nei prossimi 3 giorni. Contano solo le scadenze scelte dall'utente, non quelle standard della colonna. Le ricorrenze "in attesa" non compaiono.
+Si manda anche a giornata vuota. Con `?dry=1` l'API mostra l'anteprima senza inviare. Variabili d'ambiente: `RESEND_API_KEY`, `DIGEST_TO`, `DIGEST_FROM` (facoltativa), `CRON_SECRET`.
+
 ## Modello dati
 - `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly|yearly), note, due, source, prev_col, created_at, done_at, starts_on` (`starts_on`: data da cui un'occorrenza ricorrente diventa attiva; prima di quella data è "in attesa")
 - `labels`: `name, color (0–7)`
@@ -46,7 +53,7 @@ Un Comando Rapido su iPhone ("Nuovo task") detta una frase e la invia a `POST /a
 ## Roadmap
 1. Migrazione dei dati dal prototipo.
 2. Agente email: farlo scrivere su `/api/proposals`.
-3. Promemoria e riepilogo giornaliero di scaduti e in scadenza (cron, email o notifiche).
+3. ~~Riepilogo giornaliero di scaduti e in scadenza~~ (fatto, vedi sopra). Resta da valutare un promemoria durante la giornata (cron, email o notifiche).
 4. Flag "New": marcare i task aggiunti dopo la pianificazione del lunedì mattina.
 5. Gamification: punti in base al rispetto del piano giornaliero, settimanale, mensile.
 6. Storico "Fatto" oltre le 1000 righe.
