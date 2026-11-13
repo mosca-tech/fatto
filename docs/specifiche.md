@@ -13,7 +13,11 @@
 - I task delle altre colonne mostrano "Scade oggi" o "Scade domani".
 
 ## Ricorrenti
-Al completamento di un task ricorrente nasce una copia nella colonna corrispondente: ogni giorno → Oggi, ogni settimana → Questa settimana, ogni mese → Questo mese.
+Frequenze: ogni giorno, settimana, mese, anno. Al completamento di un task ricorrente nasce subito la prossima occorrenza, ma **non compare subito nella sua colonna**: resta "in attesa" fino all'inizio del suo periodo.
+- **Quando riappare:** ogni giorno → il giorno dopo, in Oggi; ogni settimana → il lunedì successivo, in Questa settimana; ogni mese → il primo del mese dopo, in Questo mese; ogni anno → il primo del mese di scadenza, in Questo mese.
+- **Nuova scadenza:** parte dalla scadenza del task completato, non dal giorno in cui lo si chiude, e va avanti finché cade dopo il periodo in corso (un task chiuso in ritardo non riappare già scaduto). Un giorno di fine mese resta di fine mese.
+- **In attesa:** si vede in Prima o poi, in grigio e tratteggiato, con "Riappare il 1 dic" (o "domani"). Si può aprire, modificare o eliminare, e così si ferma la ricorrenza. Non entra nei conteggi delle colonne né nel carico aperto delle analytics. Alla data prevista si sposta da solo nella colonna giusta. Trascinarlo in una colonna, o cambiarne la colonna nella scheda, lo attiva subito.
+- **Icona:** i task ricorrenti hanno una piccola ↻ accanto al titolo.
 
 ## Analytics
 Vista settimanale (lunedì–domenica): task completati, tempo stimato completato, importanti completati, completati per giorno, tempo per label, carico aperto per colonna, scaduti, report testuale da copiare.
@@ -32,7 +36,7 @@ Un Comando Rapido su iPhone ("Nuovo task") detta una frase e la invia a `POST /a
 - **Risposta:** il campo `message` è la frase che Siri legge, per esempio "Ho aggiunto Chiamare Rossi in Questa settimana come task importante, scade domani" (la parte "come task importante" solo se lo è).
 
 ## Modello dati
-- `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly), note, due, source, prev_col, created_at, done_at`
+- `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly|yearly), note, due, source, prev_col, created_at, done_at, starts_on` (`starts_on`: data da cui un'occorrenza ricorrente diventa attiva; prima di quella data è "in attesa")
 - `labels`: `name, color (0–7)`
 - `proposals`: `title, labels uuid[], source, sender, subject, reason, confidence (alta|media|bassa), status (new|accepted|dismissed), link, source_key, created_at, decided_at`
 
