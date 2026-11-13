@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { admin, authorized, ownerId, normalizeCol, colName, dueFor, labelIds, parseSpoken } from '@/lib/api';
+import { admin, authorized, ownerId, normalizeCol, colName, dueFor, dueLabel, resolveLabels, parseSpoken } from '@/lib/api';
 
 // POST /api/tasks  — crea un task (Siri, Comandi Rapidi, automazioni).
 // Header: Authorization: Bearer <TASKS_API_TOKEN>
@@ -22,7 +22,9 @@ export async function POST(request) {
   const sb = admin();
   const col = spoken.col || normalizeCol(body.col ?? body.colonna);
   try {
-    const labels = await labelIds(sb, body.labels ?? body.label ?? spoken.label);
+    const { ids: labels, unknown } = await resolveLabels(sb, body.labels ?? body.label ?? spoken.label);
+    const explicitDue = /^\d{4}-\d{2}-\d{2}$/.test(body.due || '') ? body.due : spoken.due || null;
+    const due = explicitDue || dueFor(col);
     const { data, error } = await sb
       .from('tasks')
       .insert({
@@ -33,14 +35,18 @@ export async function POST(request) {
         est: Math.max(0, parseInt(body.est, 10) || 0),
         important: !!body.important || !!spoken.important,
         note: String(body.note || '').slice(0, 2000),
-        due: /^\d{4}-\d{2}-\d{2}$/.test(body.due || '') ? body.due : dueFor(col),
+        due,
         source: String(body.source || (body.text ? 'siri' : 'api')).slice(0, 40),
       })
       .select('id')
       .single();
     if (error) throw error;
-    const message = `Aggiunto in ${colName(col)}: ${title}` + (labels.length ? '' : ' (senza label)');
-    return NextResponse.json({ id: data.id, col, title, labels: labels.length, message }, { status: 201 });
+    // La frase che Siri legge ad alta voce: dice dove è finito il task e se qualcosa non è stato capito.
+    const message =
+      `Aggiunto in ${colName(col)}: ${title}` +
+      (explicitDue ? `, scade ${dueLabel(explicitDue)}` : '') +
+      (unknown.length ? ` (label ${unknown.join(', ')} non trovata)` : labels.length ? '' : ' (senza label)');
+    return NextResponse.json({ id: data.id, col, due, title, labels: labels.length, unknownLabels: unknown, message }, { status: 201 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'salvataggio non riuscito' }, { status: 500 });

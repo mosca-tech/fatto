@@ -27,6 +27,9 @@ Vista settimanale (lunedì–domenica): task completati, tempo stimato completat
 
 ## Siri
 Un Comando Rapido su iPhone ("Nuovo task") detta una frase e la invia a `POST /api/tasks` nel campo `text`. L'app ricava titolo, colonna, label e l'eventuale "importante". Esempio: "completare il deck per oggi con label lavoro". Senza indicazione di tempo il task va in Questa settimana; senza label resta senza label.
+- **Tempo:** oggi, questa settimana, fine mese, prima o poi; inoltre domani, dopodomani, un giorno della settimana ("entro venerdì", "prossimo lunedì") e "la prossima settimana". Con una data la colonna viene scelta dalla data (oggi → Oggi, entro domenica → Questa settimana, entro fine mese → Questo mese, oltre → Prima o poi) e la scadenza è quella detta. Un giorno della settimana uguale a oggi vale oggi, salvo "prossimo".
+- **Label:** si dice "con label lavoro" (una parola); maiuscole e accenti non contano. Se non esiste, il task viene creato lo stesso senza label e la risposta lo dice.
+- **Risposta:** il campo `message` è la frase che Siri legge, per esempio "Aggiunto in Questa settimana: Chiamare Rossi, scade domani".
 
 ## Modello dati
 - `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly), note, due, source, prev_col, created_at, done_at`
