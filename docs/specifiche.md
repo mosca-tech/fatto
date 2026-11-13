@@ -20,6 +20,7 @@ Vista settimanale (lunedì–domenica): task completati, tempo stimato completat
 
 ## Proposte dall'agente email
 - Un agente legge le caselle email e propone task di follow-up; le proposte compaiono in una sezione sopra le colonne.
+- La sezione ha un pulsante Nascondi/Mostra: da nascosta resta visibile solo il titolo con il numero di proposte. La scelta viene ricordata su quel dispositivo (nel browser).
 - Ogni proposta si accetta scegliendo la colonna (diventa un task con nota e link all'email) oppure si scarta.
 - Niente doppioni: ogni proposta ha un `source_key` unico per utente; le proposte accettate e scartate restano nel database proprio per non essere riproposte.
 - Criteri dell'agente. Propone: richieste dirette a Marco, solleciti con scadenza, impegni presi da Marco nelle mail inviate, richieste di Marco rimaste senza risposta, deleghe da verificare, inviti che richiedono risposta. Scarta: accettazioni di riunione, report automatici, newsletter, mail commerciali a freddo, thread in cui Marco è solo in copia, alert già chiusi, email con contenuti riservati.

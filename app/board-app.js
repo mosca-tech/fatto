@@ -15,7 +15,7 @@ export function initBoard(sb){
 
   var tasks=new Map(), labels=new Map(), props=new Map(), db=null, seq=0;
   var filter={labels:new Set(),important:false,late:false,q:''};
-  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false;
+  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false;
 
   var $=function(id){return document.getElementById(id)};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -37,6 +37,7 @@ export function initBoard(sb){
   function shownCol(t){return isLate(t)?'today':t.col}
 
   try{ var saved=JSON.parse(localStorage.getItem('bacheca.filter')||'null'); if(saved){filter.labels=new Set(saved.labels||[]); filter.important=!!saved.important; if(saved.col) mobileCol=saved.col} }catch(e){}
+  try{ propsHidden=localStorage.getItem('bacheca.propsHidden')==='1' }catch(e){}
   function persist(){ try{localStorage.setItem('bacheca.filter',JSON.stringify({labels:Array.from(filter.labels),important:filter.important,col:mobileCol}))}catch(e){} }
 
   /* ---------- store (Supabase) ---------- */
@@ -209,7 +210,9 @@ export function initBoard(sb){
     arr.sort(function(a,b){return String(b.p.createdAt||'').localeCompare(String(a.p.createdAt||''))||String(a.id).localeCompare(String(b.id))});
     var el=$('props'); el.hidden=!arr.length;
     if(!arr.length){el.innerHTML=''; return}
-    el.innerHTML='<div class="head"><h2>Proposti dall’agente · '+arr.length+'</h2><span class="note">Trovati nelle tue email. Accetta scegliendo la colonna, oppure scarta.</span></div><div class="plist">'+arr.map(function(x){
+    el.innerHTML='<div class="head"><h2>Proposti dall’agente · '+arr.length+'</h2>'+(propsHidden?'':'<span class="note">Trovati nelle tue email. Accetta scegliendo la colonna, oppure scarta.</span>')+
+      '<button class="btn ghost" type="button" id="props-toggle" aria-expanded="'+(propsHidden?'false':'true')+'" aria-controls="plist">'+(propsHidden?'Mostra':'Nascondi')+'</button></div>'+
+      '<div class="plist" id="plist"'+(propsHidden?' hidden':'')+'>'+arr.map(function(x){
       var p=x.p, id=esc(x.id), link=/^https:\/\//.test(p.link||'')?p.link:'';
       return '<article class="prop"><div class="pt">'+esc(p.title)+'</div>'+
         '<div class="cmeta">'+(p.labels||[]).map(chipHTML).join('')+(p.confidence?'<span>Sicurezza '+esc(p.confidence)+'</span>':'')+'</div>'+
@@ -355,6 +358,11 @@ export function initBoard(sb){
   window.addEventListener('hashchange',route,{signal:ac.signal});
   $('btn-new').addEventListener('click',function(){openTask(null)});
   $('props').addEventListener('click',function(e){
+    if(e.target.closest('#props-toggle')){
+      propsHidden=!propsHidden;
+      try{localStorage.setItem('bacheca.propsHidden',propsHidden?'1':'0')}catch(err){}
+      renderProps(); return;
+    }
     var a=e.target.closest('[data-pacc]'); if(a){ decideProp(a.dataset.pacc,a.dataset.col); return }
     var d=e.target.closest('[data-pdis]'); if(d) decideProp(d.dataset.pdis,null);
   });
