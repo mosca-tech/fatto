@@ -17,7 +17,7 @@ create table if not exists public.tasks (
   labels uuid[] not null default '{}',
   est int not null default 0,
   important boolean not null default false,
-  recurring text not null default 'none' check (recurring in ('none', 'daily', 'weekly', 'monthly', 'yearly')),
+  recurring text not null default 'none',
   note text not null default '',
   due date,
   source text,
@@ -49,8 +49,10 @@ create table if not exists public.proposals (
 -- Per i database già esistenti; rieseguibile senza effetti collaterali.
 alter table public.tasks add column if not exists starts_on date;
 alter table public.tasks drop constraint if exists tasks_recurring_check;
+-- Ricorrenze personalizzate (v0.10): oltre ai valori standard, "numero + unità" da 1 a 99,
+-- con d = giorni, w = settimane, m = mesi, y = anni (es. '2y' = ogni 2 anni, '3w' = ogni 3 settimane).
 alter table public.tasks add constraint tasks_recurring_check
-  check (recurring in ('none', 'daily', 'weekly', 'monthly', 'yearly'));
+  check (recurring in ('none', 'daily', 'weekly', 'monthly', 'yearly') or recurring ~ '^[1-9][0-9]?[dwmy]$');
 
 create index if not exists tasks_user_col on public.tasks (user_id, col);
 create index if not exists proposals_user_status on public.proposals (user_id, status);

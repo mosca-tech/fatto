@@ -10,11 +10,16 @@ export function initBoard(sb){
   ];
   var EST=[0,15,30,45,60,90,120,180,240,480];
   var NCOL=8, DAYS=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'], DAYS_LONG=['lunedì','martedì','mercoledì','giovedì','venerdì','sabato','domenica'];
-  var REC={daily:'ogni giorno',weekly:'ogni settimana',monthly:'ogni mese',yearly:'ogni anno'};
+  // Ricorrenze: i quattro valori standard oppure "numero + unità" (es. '2y' = ogni 2 anni, '3w' = ogni 3 settimane).
+  var REC_STD={daily:'1d',weekly:'1w',monthly:'1m',yearly:'1y'}, REC_NAME={d:'daily',w:'weekly',m:'monthly',y:'yearly'};
+  var UNIT={d:['giorno','giorni'],w:['settimana','settimane'],m:['mese','mesi'],y:['anno','anni']};
+  function recParse(r){ var m=/^([1-9]\d?)([dwmy])$/.exec(REC_STD[r]||r||''); return m?{n:+m[1],u:m[2]}:null }
+  function recText(r){ var p=recParse(r); return !p?'':p.n===1?'ogni '+UNIT[p.u][0]:'ogni '+p.n+' '+UNIT[p.u][1] }
+  function recValue(n,u){ n=Math.min(99,Math.max(1,parseInt(n,10)||1)); return n===1?REC_NAME[u]:n+u }
 
   var tasks=new Map(), labels=new Map(), props=new Map(), db=null, seq=0;
   var filter={labels:new Set(),important:false,late:false,q:''};
-  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today', hideDone=false;
+  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today', hiddenCols=new Set(), colsOpen=false;
 
   var $=function(id){return document.getElementById(id)};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -60,7 +65,14 @@ export function initBoard(sb){
 
   try{ var saved=JSON.parse(localStorage.getItem('bacheca.filter')||'null'); if(saved){filter.labels=new Set(saved.labels||[]); filter.important=!!saved.important; if(saved.col) mobileCol=saved.col} }catch(e){}
   try{ propsHidden=localStorage.getItem('bacheca.propsHidden')==='1' }catch(e){}
-  try{ hideDone=localStorage.getItem('bacheca.hideDone')==='1' }catch(e){}
+  // Colonne nascoste su questo dispositivo. Chi aveva acceso "Nascondi i task completati" ritrova Fatto nascosta.
+  try{
+    var hc=JSON.parse(localStorage.getItem('bacheca.hiddenCols')||'null');
+    if(Array.isArray(hc)) hiddenCols=new Set(hc.filter(function(id){return COLS.some(function(c){return c.id===id})}));
+    else if(localStorage.getItem('bacheca.hideDone')==='1') hiddenCols.add('done');
+    if(hiddenCols.size>=COLS.length) hiddenCols.clear();
+  }catch(e){}
+  function persistCols(){ try{localStorage.setItem('bacheca.hiddenCols',JSON.stringify(Array.from(hiddenCols)))}catch(e){} }
   function persist(){ try{localStorage.setItem('bacheca.filter',JSON.stringify({labels:Array.from(filter.labels),important:filter.important,col:mobileCol}))}catch(e){} }
 
   /* ---------- store (Supabase) ---------- */
@@ -128,15 +140,15 @@ export function initBoard(sb){
   // La nuova scadenza parte da quella del task completato (non dal giorno in cui lo chiudi) e va avanti
   // finché cade dopo il periodo in corso: un task completato in ritardo non riappare già scaduto.
   function nextOccurrence(t){
-    var tod=today(), base=/^\d{4}-\d{2}-\d{2}$/.test(t.due||'')?t.due:tod, due, k;
-    if(t.recurring==='daily'){ for(k=1;;k++){ due=addDays(base,k); if(due>tod) break } return {col:'today',due:due,startsOn:due} }
-    if(t.recurring==='weekly'){ for(k=1;;k++){ due=addDays(base,7*k); if(due>weekEndOf(tod)) break } return {col:'week',due:due,startsOn:addDays(weekEndOf(due),-6)} }
-    if(t.recurring==='monthly'){ for(k=1;;k++){ due=addMonths(base,k); if(due>monthEndOf(tod)) break } return {col:'month',due:due,startsOn:due.slice(0,8)+'01'} }
-    for(k=1;;k++){ due=addMonths(base,12*k); if(due>tod) break }
+    var tod=today(), base=/^\d{4}-\d{2}-\d{2}$/.test(t.due||'')?t.due:tod, p=recParse(t.recurring), n=p.n, due, k;
+    if(p.u==='d'){ for(k=1;;k++){ due=addDays(base,n*k); if(due>tod) break } return {col:'today',due:due,startsOn:due} }
+    if(p.u==='w'){ for(k=1;;k++){ due=addDays(base,7*n*k); if(due>weekEndOf(tod)) break } return {col:'week',due:due,startsOn:addDays(weekEndOf(due),-6)} }
+    if(p.u==='m'){ for(k=1;;k++){ due=addMonths(base,n*k); if(due>monthEndOf(tod)) break } return {col:'month',due:due,startsOn:due.slice(0,8)+'01'} }
+    for(k=1;;k++){ due=addMonths(base,12*n*k); if(due>tod) break }
     return {col:'month',due:due,startsOn:due.slice(0,8)+'01'};
   }
   function spawnRecurrence(t){
-    if(!t.recurring||t.recurring==='none') return;
+    if(!recParse(t.recurring)) return;
     var n=nextOccurrence(t);
     store.setTask(null,newTask({title:t.title,labels:(t.labels||[]).slice(),est:t.est||0,important:!!t.important,recurring:t.recurring,note:t.note||'',
       col:n.col,due:n.due,startsOn:n.startsOn>today()?n.startsOn:null}));
@@ -212,7 +224,7 @@ export function initBoard(sb){
     return '<span class="chip" style="--lc:'+lc(l)+'"><span class="dot"></span>'+esc(l.name)+'</span>';
   }
   function cardHTML(id,t){
-    var done=t.col==='done', late=!done&&isLate(t), due=dueOf(t), badge='', pending=isPending(t), rec=t.recurring&&t.recurring!=='none';
+    var done=t.col==='done', late=!done&&isLate(t), due=dueOf(t), badge='', pending=isPending(t), rec=recText(t.recurring);
     if(late){
       var n=daysLate(t), from=t.col!=='today'?COLS.filter(function(c){return c.id===t.col})[0]:null;
       badge='<span class="badge late">'+(n===1?'Scaduto ieri':'Scaduto da '+n+' giorni')+'</span>'+(from?'<span>da '+esc(from.name)+'</span>':'')+
@@ -226,27 +238,27 @@ export function initBoard(sb){
     }
     return '<article class="card'+(t.important?' imp':'')+(done?' done':'')+(late?' late':'')+(pending?' pending':'')+'" draggable="true" data-id="'+esc(id)+'">'+
       '<button class="check" type="button" data-check="'+esc(id)+'" aria-label="'+(done?'Riapri':'Segna come fatto')+'">'+(done?'✓':'')+'</button>'+
-      '<div class="cbody"><button class="ctitle" type="button" data-open="'+esc(id)+'">'+(rec?'<span class="recicon" role="img" title="Ricorrente: '+esc(REC[t.recurring]||'')+'" aria-label="Ricorrente: '+esc(REC[t.recurring]||'')+'">↻</span> ':'')+esc(t.title||'(senza titolo)')+'</button>'+
+      '<div class="cbody"><button class="ctitle" type="button" data-open="'+esc(id)+'">'+(rec?'<span class="recicon" role="img" title="Ricorrente: '+esc(rec)+'" aria-label="Ricorrente: '+esc(rec)+'">↻</span> ':'')+esc(t.title||'(senza titolo)')+'</button>'+
       '<div class="cmeta">'+(t.important?'<span class="star" title="Importante">★</span>':'')+badge+(t.source?'<span title="Creato da un’email">✉ email</span>':'')+
       (t.labels||[]).map(chipHTML).join('')+
       (t.est?'<span class="est">'+fmt(t.est)+'</span>':'')+
-      (rec?'<span title="Ricorrente">'+esc(REC[t.recurring]||'')+'</span>':'')+
+      (rec?'<span title="Ricorrente">'+esc(rec)+'</span>':'')+
       '</div></div></article>';
   }
   function renderBoard(){
-    var tabs='';
-    if(hideDone&&mobileCol==='done'){ mobileCol='today'; persist() }
-    $('board').classList.toggle('nodone',hideDone);
+    var tabs='', vis=COLS.filter(function(c){return !hiddenCols.has(c.id)});
+    if(hiddenCols.has(mobileCol)){ mobileCol=hiddenCols.has('today')?vis[0].id:'today'; persist() }
+    $('board').style.setProperty('--ncol',vis.length);
     COLS.forEach(function(c){
       var items=colTasks(c.id), active=items.filter(function(x){return !isPending(x.t)}), mins=active.reduce(function(s,x){return s+(x.t.est||0)},0);
       $('stat-'+c.id).textContent=active.length+(mins?' · '+fmt(mins):'');
       $('list-'+c.id).innerHTML=items.length?items.map(function(x){return cardHTML(x.id,x.t)}).join(''):
         '<div class="empty">'+(c.id==='done'?'Niente completato negli ultimi 7 giorni.':'Nessun task qui.')+'</div>';
-      if(c.id==='done'&&hideDone) return;
+      if(hiddenCols.has(c.id)) return;
       tabs+='<button type="button" role="tab" data-tab="'+c.id+'" aria-selected="'+(mobileCol===c.id)+'">'+esc(c.name)+'<span class="n">'+active.length+'</span></button>';
     });
     $('coltabs').innerHTML=tabs;
-    document.querySelectorAll('.col').forEach(function(el){el.classList.toggle('active',el.dataset.col===mobileCol); el.hidden=hideDone&&el.dataset.col==='done'});
+    document.querySelectorAll('.col').forEach(function(el){el.classList.toggle('active',el.dataset.col===mobileCol); el.hidden=hiddenCols.has(el.dataset.col)});
   }
   function renderFilters(){
     var h='<span class="lbl">Filtra</span>';
@@ -259,12 +271,28 @@ export function initBoard(sb){
     var lateN=0; tasks.forEach(function(t){ if(isLate(t)) lateN++ });
     if(lateN||filter.late) h+='<button class="chip" type="button" style="--lc:var(--danger)" id="f-late" aria-pressed="'+filter.late+'"><span class="dot"></span>Scaduti · '+lateN+'</button>';
     if(filter.labels.size||filter.important||filter.late||filter.q) h+='<button class="btn ghost" type="button" id="f-clear">Azzera filtri</button>';
-    h+='<span style="flex:1"></span><button class="switch" type="button" id="toggle-done" role="switch" aria-checked="'+hideDone+'"><span class="track"><span class="knob"></span></span><span>Nascondi i task completati</span></button>';
+    h+='<span style="flex:1"></span>'+colsMenuHTML();
     h+='<input id="search" type="search" placeholder="Cerca…" aria-label="Cerca nei task" value="'+esc(filter.q)+'">';
-    var ae=document.activeElement, had=ae&&ae.id==='search', pos=had?ae.selectionStart:0, hadSwitch=ae&&ae.id==='toggle-done';
+    var ae=document.activeElement, had=ae&&ae.id==='search', pos=had?ae.selectionStart:0;
+    var hadBtn=ae&&ae.id==='cols-btn', hadCol=ae&&ae.dataset&&ae.dataset.colvis;
     $('filters').innerHTML=h;
     if(had){var s=$('search'); s.focus(); try{s.setSelectionRange(pos,pos)}catch(e){}}
-    if(hadSwitch) $('toggle-done').focus();
+    if(hadBtn) $('cols-btn').focus();
+    if(hadCol){ var sw=document.querySelector('[data-colvis="'+hadCol+'"]'); if(sw) sw.focus() }
+  }
+  // Menu "Colonne": un interruttore per colonna. Almeno una resta sempre visibile.
+  function colsMenuHTML(){
+    var nh=hiddenCols.size, h='<div class="colsmenu'+(colsOpen?' open':'')+'">'+
+      '<button class="btn'+(nh?' on':'')+'" type="button" id="cols-btn" aria-expanded="'+colsOpen+'" aria-controls="cols-pop">Colonne'+(nh?' · '+nh+(nh===1?' nascosta':' nascoste'):'')+'</button>';
+    if(colsOpen){
+      h+='<div class="pop" id="cols-pop" role="group" aria-label="Colonne da mostrare"><div class="note">Mostra</div>'+COLS.map(function(c){
+        var on=!hiddenCols.has(c.id), last=on&&hiddenCols.size===COLS.length-1;
+        var n=colTasks(c.id).filter(function(x){return !isPending(x.t)}).length;
+        return '<button class="switch" type="button" role="switch" data-colvis="'+c.id+'" aria-checked="'+on+'"'+(last?' disabled title="Almeno una colonna resta visibile"':'')+'>'+
+          '<span class="track"><span class="knob"></span></span><span>'+esc(c.name)+'</span><span class="n">'+n+'</span></button>';
+      }).join('')+'</div>';
+    }
+    return h+'</div>';
   }
   function sortedLabels(){
     var arr=[]; labels.forEach(function(l,id){arr.push({id:id,l:l})});
@@ -378,7 +406,7 @@ export function initBoard(sb){
     $('dlg-task-title').textContent=id?'Modifica task':'Nuovo task';
     $('f-title').value=t.title||''; $('f-col').value=t.col||'today'; dlgCol=t.col||'today'; $('f-due').setCustomValidity('');
     $('f-est').value=String(EST.indexOf(t.est|0)>=0?(t.est|0):0);
-    $('f-due').value=dueOf(t)||''; $('f-rec').value=t.recurring||'none'; $('f-imp').checked=!!t.important; $('f-note').value=t.note||'';
+    $('f-due').value=dueOf(t)||''; setRecFields(t.recurring); $('f-imp').checked=!!t.important; $('f-note').value=t.note||'';
     var sel=new Set(t.labels||[]);
     $('f-labels').innerHTML=sortedLabels().map(function(x){
       return '<button class="chip" type="button" style="--lc:'+lc(x.l)+'" data-pick="'+esc(x.id)+'" aria-pressed="'+sel.has(x.id)+'"><span class="dot"></span>'+esc(x.l.name)+'</button>';
@@ -386,6 +414,15 @@ export function initBoard(sb){
     $('f-del').hidden=!id; $('f-del').textContent='Elimina';
     $('dlg-task').showModal(); $('f-title').focus();
   }
+  // Menu Ricorrenza: valori standard oppure "Personalizzata…" con "ogni N giorni/settimane/mesi/anni".
+  function setRecFields(r){
+    var p=recParse(r), std=!p||REC_STD[r];
+    $('f-rec').value=$('f-rec').dataset.prev=!p?'none':std?r:'custom';
+    $('f-rec-n').value=p&&!std?p.n:2; $('f-rec-u').value=p?p.u:'w';
+    showRecCustom();
+  }
+  function showRecCustom(){ var on=$('f-rec').value==='custom'; $('f-rec-custom').hidden=!on; $('f-rec-n').disabled=!on; $('f-rec-u').disabled=!on }
+  function recFromFields(){ var v=$('f-rec').value; return v==='custom'?recValue($('f-rec-n').value,$('f-rec-u').value):v }
   function saveTask(){
     var title=$('f-title').value.trim(); if(!title) return;
     var prev=editingId?tasks.get(editingId):null, col=$('f-col').value, dv=$('f-due').value;
@@ -394,7 +431,7 @@ export function initBoard(sb){
     }
     $('f-due').setCustomValidity('');
     var data=Object.assign({},prev||newTask(),{
-      title:title,col:col,est:parseInt($('f-est').value,10)||0,recurring:$('f-rec').value,
+      title:title,col:col,est:parseInt($('f-est').value,10)||0,recurring:recFromFields(),
       important:$('f-imp').checked,note:$('f-note').value.trim(),
       labels:Array.prototype.map.call(document.querySelectorAll('#f-labels [aria-pressed="true"]'),function(b){return b.dataset.pick})
     });
@@ -449,6 +486,12 @@ export function initBoard(sb){
     dlgCol=c; $('f-due').setCustomValidity('');
   });
   $('f-due').addEventListener('input',function(){ this.setCustomValidity('') });
+  $('f-rec').addEventListener('change',function(){
+    // Passando a "Personalizzata…" si parte dall'unità già scelta (ogni settimana → ogni 2 settimane).
+    var p=recParse(this.dataset.prev); if(this.value==='custom'&&p) $('f-rec-u').value=p.u;
+    this.dataset.prev=this.value; showRecCustom();
+    if(this.value==='custom') $('f-rec-n').select();
+  });
   $('form-due').addEventListener('submit',function(e){
     e.preventDefault(); if(!dueMove) return;
     store.patchTask(dueMove.id,{col:dueMove.col,due:$('due-new').value,startsOn:null}); dueMove=null; $('dlg-due').close();
@@ -472,10 +515,12 @@ export function initBoard(sb){
   });
 
   $('filters').addEventListener('click',function(e){
-    if(e.target.closest('#toggle-done')){
-      hideDone=!hideDone;
-      try{localStorage.setItem('bacheca.hideDone',hideDone?'1':'0')}catch(err){}
-      renderAll(); return;
+    if(e.target.closest('#cols-btn')){ colsOpen=!colsOpen; renderFilters(); return }
+    var cv=e.target.closest('[data-colvis]');
+    if(cv){
+      var cid=cv.dataset.colvis;
+      if(hiddenCols.has(cid)) hiddenCols.delete(cid); else if(hiddenCols.size<COLS.length-1) hiddenCols.add(cid);
+      persistCols(); renderAll(); return;
     }
     var b=e.target.closest('[data-flabel]');
     if(b){var id=b.dataset.flabel; if(filter.labels.has(id)) filter.labels.delete(id); else filter.labels.add(id)}
@@ -484,6 +529,13 @@ export function initBoard(sb){
     else if(e.target.closest('#f-clear')){filter.labels.clear(); filter.important=false; filter.late=false; filter.q=''}
     else return;
     persist(); renderAll();
+  });
+  // Il menu Colonne si chiude cliccando fuori o con Esc.
+  document.addEventListener('click',function(e){
+    if(colsOpen&&!e.target.closest('.colsmenu')){ colsOpen=false; renderFilters() }
+  },{signal:ac.signal});
+  $('filters').addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&colsOpen){ colsOpen=false; renderFilters(); $('cols-btn').focus() }
   });
   $('filters').addEventListener('input',function(e){
     if(e.target.id!=='search') return;
