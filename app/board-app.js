@@ -19,7 +19,8 @@ export function initBoard(sb){
 
   var tasks=new Map(), labels=new Map(), props=new Map(), db=null, seq=0;
   var filter={labels:new Set(),important:false,late:false,q:''};
-  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today', hiddenCols=new Set(), colsOpen=false;
+  var NOTICE=[[0,'Nessuno'],[3,'3 giorni prima'],[7,'1 settimana prima'],[14,'2 settimane prima'],[30,'1 mese prima'],[60,'2 mesi prima'],[90,'3 mesi prima']];
+  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today', hiddenCols=new Set(), colsOpen=false, snoozeOpen=null;
 
   var $=function(id){return document.getElementById(id)};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -51,9 +52,15 @@ export function initBoard(sb){
     if(t.col==='week') return dateOf(d).getDay()!==0;
     return d>today();
   }
+  // Preavviso: dal giorno "scadenza meno N giorni" il task sale almeno in Questa settimana.
+  function noticeFrom(t){ return t.noticeDays>0&&t.due&&t.col!=='done'?addDays(t.due,-t.noticeDays):null }
+  function inNotice(t){ var nf=noticeFrom(t); return !!nf&&nf<=today() }
   function planCol(t){
-    if(t.col==='done'||!explicitDue(t)) return t.col;
-    var c=colFromDue(t.due); return RANK[c]<RANK[t.col]?c:t.col;
+    if(t.col==='done') return t.col;
+    var c=t.col;
+    if(explicitDue(t)){ var d=colFromDue(t.due); if(RANK[d]<RANK[c]) c=d }
+    if(inNotice(t)&&RANK.week<RANK[c]) c='week';
+    return c;
   }
   // La colonna non è troppo in là rispetto alla scadenza? (Oggi va sempre bene.)
   function dueFits(col,d){ return !d||col==='done'||col==='today'||RANK[col]<=RANK[colFromDue(d)] }
@@ -84,14 +91,16 @@ export function initBoard(sb){
   }
   function taskRow(d){
     return {title:d.title||'',col:d.col||'today',labels:d.labels||[],est:d.est|0,important:!!d.important,recurring:d.recurring||'none',
-      note:d.note||'',due:d.due||null,source:d.source||null,prev_col:d.prevCol||null,created_at:d.createdAt||nowISO(),done_at:d.doneAt||null,starts_on:d.startsOn||null};
+      note:d.note||'',due:d.due||null,source:d.source||null,prev_col:d.prevCol||null,created_at:d.createdAt||nowISO(),done_at:d.doneAt||null,starts_on:d.startsOn||null,
+      notice_days:d.noticeDays|0,in_calendar:!!d.inCalendar};
   }
   function taskObj(r){
     return {title:r.title,col:r.col,labels:r.labels||[],est:r.est||0,important:!!r.important,recurring:r.recurring||'none',
-      note:r.note||'',due:r.due||null,source:r.source||null,prevCol:r.prev_col||null,createdAt:r.created_at,doneAt:r.done_at||null,startsOn:r.starts_on||null};
+      note:r.note||'',due:r.due||null,source:r.source||null,prevCol:r.prev_col||null,createdAt:r.created_at,doneAt:r.done_at||null,startsOn:r.starts_on||null,
+      noticeDays:r.notice_days|0,inCalendar:!!r.in_calendar};
   }
   function patchRow(p){
-    var m={prevCol:'prev_col',doneAt:'done_at',createdAt:'created_at',startsOn:'starts_on'}, o={};
+    var m={prevCol:'prev_col',doneAt:'done_at',createdAt:'created_at',startsOn:'starts_on',noticeDays:'notice_days',inCalendar:'in_calendar'}, o={};
     Object.keys(p).forEach(function(k){ o[m[k]||k]=p[k] }); return o;
   }
   // Ogni modifica si vede subito a schermo e poi viene salvata; se il salvataggio fallisce si ricarica dal database.
@@ -125,7 +134,7 @@ export function initBoard(sb){
 
   /* ---------- task logic ---------- */
   function nowISO(){return new Date().toISOString()}
-  function newTask(over){ var t=Object.assign({title:'',col:'today',labels:[],est:0,important:false,recurring:'none',note:'',createdAt:nowISO(),doneAt:null,prevCol:null,startsOn:null},over||{}); if(t.due===undefined) t.due=dueFor(t.col); return t }
+  function newTask(over){ var t=Object.assign({title:'',col:'today',labels:[],est:0,important:false,recurring:'none',note:'',createdAt:nowISO(),doneAt:null,prevCol:null,startsOn:null,noticeDays:0,inCalendar:false},over||{}); if(t.due===undefined) t.due=dueFor(t.col); return t }
   /* Date delle ricorrenze (giorni locali, formato AAAA-MM-GG). */
   function dateOf(s){return new Date(s+'T00:00:00')}
   function addDays(s,n){var d=dateOf(s); d.setDate(d.getDate()+n); return ymd(d)}
@@ -149,9 +158,10 @@ export function initBoard(sb){
   }
   function spawnRecurrence(t){
     if(!recParse(t.recurring)) return;
-    var n=nextOccurrence(t);
+    var n=nextOccurrence(t), s=n.startsOn;
+    if(t.noticeDays>0){ var nf=addDays(n.due,-t.noticeDays); if(nf<s) s=nf }   // con il preavviso riappare prima
     store.setTask(null,newTask({title:t.title,labels:(t.labels||[]).slice(),est:t.est||0,important:!!t.important,recurring:t.recurring,note:t.note||'',
-      col:n.col,due:n.due,startsOn:n.startsOn>today()?n.startsOn:null}));
+      noticeDays:t.noticeDays|0,inCalendar:!!t.inCalendar,col:n.col,due:n.due,startsOn:s>today()?s:null}));
   }
   function complete(id){
     var t=tasks.get(id); if(!t||t.col==='done') return;
@@ -177,6 +187,25 @@ export function initBoard(sb){
     $('due-msg').textContent='Questo task scade il '+dm(dateOf(t.due))+': in “'+name+'” arriverebbe troppo tardi. Scegli una nuova scadenza dal '+dm(dateOf(min))+' in poi, oppure togli la scadenza.';
     $('due-new').min=min; $('due-new').value=min;
     $('dlg-due').showModal();
+  }
+
+  // Rimanda: il task sparisce fino al giorno scelto (in attesa, come le ricorrenze) e poi torna nella colonna giusta.
+  // Una scadenza scelta da te e non ancora passata resta; se arriverebbe prima del ritorno, quell'opzione non c'è.
+  var SNOOZE=[{id:'tomorrow',name:'Domani',col:'today'},{id:'monday',name:'Lunedì',col:'week'},{id:'nextmonth',name:'Mese prossimo',col:'month'}];
+  function snoozeStart(k){ var tod=today(); return k==='tomorrow'?addDays(tod,1):k==='monday'?addDays(weekEndOf(tod),1):addDays(monthEndOf(tod),1) }
+  function snoozeOptions(t){
+    if(t.col==='done'||isPending(t)) return [];
+    var sc=shownCol(t); if(sc==='later') return [];
+    var keep=explicitDue(t)&&!isLate(t);
+    return SNOOZE.filter(function(o){ return RANK[o.col]>=RANK[sc]&&(!keep||t.due>=snoozeStart(o.id)) });
+  }
+  function snooze(id,k){
+    var t=tasks.get(id); if(!t) return;
+    var o=SNOOZE.filter(function(x){return x.id===k})[0], s=snoozeStart(k);
+    var due=explicitDue(t)&&!isLate(t)?t.due:dueFor(o.col,dateOf(s));
+    snoozeOpen=null;
+    store.patchTask(id,{col:o.col,due:due,startsOn:s});
+    sync('Rimandato: riappare '+(k==='tomorrow'?'domani':'il '+dm(dateOf(s))));
   }
 
   function matches(t){
@@ -217,6 +246,7 @@ export function initBoard(sb){
         '<div class="list" id="list-'+c.id+'"></div></section>';
     }).join('');
     $('f-col').innerHTML=COLS.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>'}).join('');
+    $('f-notice').innerHTML=NOTICE.map(function(n){return '<option value="'+n[0]+'">'+esc(n[1])+'</option>'}).join('');
     $('f-est').innerHTML=EST.map(function(m){return '<option value="'+m+'">'+(m?fmt(m):'Nessuna')+'</option>'}).join('');
   }
   function chipHTML(id){
@@ -230,20 +260,25 @@ export function initBoard(sb){
       badge='<span class="badge late">'+(n===1?'Scaduto ieri':'Scaduto da '+n+' giorni')+'</span>'+(from?'<span>da '+esc(from.name)+'</span>':'')+
         '<button class="replan" type="button" data-replan="'+esc(id)+'">Sposta a oggi</button>';
     } else if(pending){
-      badge='<span title="Riappare da solo in questa data">Riappare '+(t.startsOn===ymd(new Date(Date.now()+864e5))?'domani':'il '+dm(dateOf(t.startsOn)))+'</span>';
+      badge='<span title="Riappare da solo in questa data">Riappare '+(t.startsOn===ymd(new Date(Date.now()+864e5))?'domani':'il '+dmy(dateOf(t.startsOn)))+'</span>';
     } else if(!done&&due&&shownCol(t)!=='today'){
       if(due===today()) badge='<span class="badge soon">Scade oggi</span>';
       else if(due===ymd(new Date(Date.now()+864e5))) badge='<span class="badge soon">Scade domani</span>';
-      else if(explicitDue(t)) badge='<span title="Scadenza">Scade il '+dm(dateOf(due))+'</span>';
+      else if(inNotice(t)) badge='<span class="badge soon" title="Preavviso">Scade il '+dmy(dateOf(due))+' · tra '+(-daysLate(t))+' giorni</span>';
+      else if(explicitDue(t)) badge='<span title="Scadenza">Scade il '+dmy(dateOf(due))+'</span>';
     }
+    var sn=snoozeOptions(t);
+    if(sn.length) badge+='<button class="replan" type="button" data-snooze="'+esc(id)+'" aria-expanded="'+(snoozeOpen===id)+'">Rimanda</button>';
     return '<article class="card'+(t.important?' imp':'')+(done?' done':'')+(late?' late':'')+(pending?' pending':'')+'" draggable="true" data-id="'+esc(id)+'">'+
       '<button class="check" type="button" data-check="'+esc(id)+'" aria-label="'+(done?'Riapri':'Segna come fatto')+'">'+(done?'✓':'')+'</button>'+
       '<div class="cbody"><button class="ctitle" type="button" data-open="'+esc(id)+'">'+(rec?'<span class="recicon" role="img" title="Ricorrente: '+esc(rec)+'" aria-label="Ricorrente: '+esc(rec)+'">↻</span> ':'')+esc(t.title||'(senza titolo)')+'</button>'+
-      '<div class="cmeta">'+(t.important?'<span class="star" title="Importante">★</span>':'')+badge+(t.source?'<span title="Creato da un’email">✉ email</span>':'')+
+      '<div class="cmeta">'+(t.important?'<span class="star" title="Importante">★</span>':'')+badge+(t.source?'<span title="Creato da un’email">✉ email</span>':'')+(t.inCalendar?'<span title="Nel calendario">📅</span>':'')+
       (t.labels||[]).map(chipHTML).join('')+
       (t.est?'<span class="est">'+fmt(t.est)+'</span>':'')+
       (rec?'<span title="Ricorrente">'+esc(rec)+'</span>':'')+
-      '</div></div></article>';
+      '</div>'+(sn.length&&snoozeOpen===id?'<div class="snooze"><span>Rimanda a</span>'+sn.map(function(o){
+        return '<button class="btn" type="button" data-snoozeto="'+o.id+'" data-id="'+esc(id)+'">'+esc(o.name)+'</button>';
+      }).join('')+'</div>':'')+'</div></article>';
   }
   function renderBoard(){
     var tabs='', vis=COLS.filter(function(c){return !hiddenCols.has(c.id)});
@@ -335,6 +370,8 @@ export function initBoard(sb){
     d.setDate(d.getDate()-((d.getDay()+6)%7)+off*7); return d;
   }
   function dm(d){return d.getDate()+' '+['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'][d.getMonth()]}
+  // Come dm, con l'anno se non è quello in corso (es. "1 ott 2028").
+  function dmy(d){return dm(d)+(d.getFullYear()!==new Date().getFullYear()?' '+d.getFullYear():'')}
   function renderAnalytics(){
     var ws=weekStart(weekOffset), we=new Date(ws); we.setDate(we.getDate()+7);
     var last=new Date(we); last.setDate(last.getDate()-1);
@@ -406,7 +443,9 @@ export function initBoard(sb){
     $('dlg-task-title').textContent=id?'Modifica task':'Nuovo task';
     $('f-title').value=t.title||''; $('f-col').value=t.col||'today'; dlgCol=t.col||'today'; $('f-due').setCustomValidity('');
     $('f-est').value=String(EST.indexOf(t.est|0)>=0?(t.est|0):0);
-    $('f-due').value=dueOf(t)||''; setRecFields(t.recurring); $('f-imp').checked=!!t.important; $('f-note').value=t.note||'';
+    $('f-due').value=dueOf(t)||''; setRecFields(t.recurring); $('f-imp').checked=!!t.important;
+    $('f-notice').value=String(t.noticeDays|0); if($('f-notice').value!==String(t.noticeDays|0)) $('f-notice').value='0'; $('f-notice').setCustomValidity('');
+    $('f-cal').checked=!!t.inCalendar; $('f-note').value=t.note||'';
     var sel=new Set(t.labels||[]);
     $('f-labels').innerHTML=sortedLabels().map(function(x){
       return '<button class="chip" type="button" style="--lc:'+lc(x.l)+'" data-pick="'+esc(x.id)+'" aria-pressed="'+sel.has(x.id)+'"><span class="dot"></span>'+esc(x.l.name)+'</button>';
@@ -430,7 +469,9 @@ export function initBoard(sb){
       var fd=$('f-due'); fd.setCustomValidity('Scadenza troppo vicina per questa colonna: scegli dal '+dm(dateOf(minDue(col)))+' in poi, oppure svuota il campo.'); fd.reportValidity(); return;
     }
     $('f-due').setCustomValidity('');
-    var data=Object.assign({},prev||newTask(),{
+    var notice=parseInt($('f-notice').value,10)||0;
+    if(notice&&col!=='done'&&!dv){ var fn=$('f-notice'); fn.setCustomValidity('Il preavviso serve solo con una scadenza: impostala oppure scegli Nessuno.'); fn.reportValidity(); return }
+    var data=Object.assign({},prev||newTask(),{noticeDays:notice,inCalendar:$('f-cal').checked,
       title:title,col:col,est:parseInt($('f-est').value,10)||0,recurring:recFromFields(),
       important:$('f-imp').checked,note:$('f-note').value.trim(),
       labels:Array.prototype.map.call(document.querySelectorAll('#f-labels [aria-pressed="true"]'),function(b){return b.dataset.pick})
@@ -485,7 +526,8 @@ export function initBoard(sb){
     if(!(d&&d!==(dueFor(dlgCol)||''))) $('f-due').value=dueFor(c)||'';
     dlgCol=c; $('f-due').setCustomValidity('');
   });
-  $('f-due').addEventListener('input',function(){ this.setCustomValidity('') });
+  $('f-due').addEventListener('input',function(){ this.setCustomValidity(''); $('f-notice').setCustomValidity('') });
+  $('f-notice').addEventListener('change',function(){ this.setCustomValidity('') });
   $('f-rec').addEventListener('change',function(){
     // Passando a "Personalizzata…" si parte dall'unità già scelta (ogni settimana → ogni 2 settimane).
     var p=recParse(this.dataset.prev); if(this.value==='custom'&&p) $('f-rec-u').value=p.u;
@@ -550,6 +592,10 @@ export function initBoard(sb){
   board.addEventListener('click',function(e){
     var c=e.target.closest('[data-check]');
     if(c){var id=c.dataset.check, t=tasks.get(id); if(t&&t.col==='done') reopen(id); else complete(id); return}
+    var so=e.target.closest('[data-snooze]');
+    if(so){ snoozeOpen=snoozeOpen===so.dataset.snooze?null:so.dataset.snooze; renderBoard(); var b2=document.querySelector('[data-snooze="'+so.dataset.snooze+'"]'); if(b2) b2.focus(); return }
+    var st=e.target.closest('[data-snoozeto]');
+    if(st){ snooze(st.dataset.id,st.dataset.snoozeto); return }
     var rp=e.target.closest('[data-replan]');
     if(rp){ store.patchTask(rp.dataset.replan,{col:'today',due:today()}); return }
     var o=e.target.closest('[data-open]'); if(o) openTask(o.dataset.open);

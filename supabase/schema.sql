@@ -54,6 +54,14 @@ alter table public.tasks drop constraint if exists tasks_recurring_check;
 alter table public.tasks add constraint tasks_recurring_check
   check (recurring in ('none', 'daily', 'weekly', 'monthly', 'yearly') or recurring ~ '^[1-9][0-9]?[dwmy]$');
 
+-- Preavviso e calendario (v0.11).
+-- notice_days: quanti giorni prima della scadenza il task sale in Questa settimana (0 = nessun preavviso).
+-- in_calendar: il task compare nel calendario in abbonamento (GET /api/calendar).
+alter table public.tasks add column if not exists notice_days integer not null default 0;
+alter table public.tasks drop constraint if exists tasks_notice_days_check;
+alter table public.tasks add constraint tasks_notice_days_check check (notice_days between 0 and 366);
+alter table public.tasks add column if not exists in_calendar boolean not null default false;
+
 create index if not exists tasks_user_col on public.tasks (user_id, col);
 create index if not exists proposals_user_status on public.proposals (user_id, status);
 
