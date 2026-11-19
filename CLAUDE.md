@@ -5,7 +5,8 @@ Fatto è la bacheca personale dei task di Marco (lavoro e vita privata). Un solo
 ## Stack
 - Next.js 15, App Router, JavaScript (niente TypeScript), React 19.
 - Supabase: Postgres, login Google, Realtime. Client in `lib/supabase/`.
-- Deploy su Vercel a ogni push sul ramo `main`. Ogni altro ramo o pull request genera un'anteprima.
+- Deploy su Vercel a ogni push sul ramo `main` (produzione). Il ramo `staging` è la sandbox fissa di Marco: https://fatto-git-staging-mosca-tech.vercel.app. Ogni altro ramo o pull request genera un'anteprima con un indirizzo suo.
+- Produzione e staging usano lo stesso database Supabase: una modifica allo schema vale subito per entrambe.
 
 ## Comandi
 - `npm install`
@@ -37,7 +38,7 @@ Non ci sono test automatici. Le funzioni pure in `lib/api.js` (per esempio `pars
 - **API:** tutte le rotte in `app/api/` controllano `authorized(request)` e scrivono solo per `OWNER_USER_ID`. Usano la chiave segreta di Supabase, quindi filtrano sempre per utente.
 - **Stile del codice della bacheca:** `board-app.js` è volutamente semplice (funzioni, `var`, stringhe HTML passate da `esc()`). Mantieni lo stesso stile e passa sempre da `esc()` qualsiasi testo che arriva dai dati. Una riscrittura in componenti React si fa solo se Marco la chiede.
 - **Versione:** il numero mostrato nel piè di pagina ("Fatto v0.2") viene da `version` in `package.json` (`0.2.0` si legge `0.2`). A ogni nuova versione che si rilascia aggiornalo lì, insieme a `package-lock.json`.
-- **Modifiche:** piccole e separate; lavora su un ramo e apri una pull request, così Marco prova l'anteprima di Vercel prima di unire.
+- **Modifiche:** piccole e separate. Flusso: lavora sul tuo ramo, verifica la build, poi uniscilo in `staging` (merge, senza riscrivere la storia) e fai push di `staging`, così Marco prova sempre allo stesso indirizzo. Per portare in produzione apri (o aggiorna) una pull request da `staging` a `main`: la unisce Marco. Non fare mai push diretti su `main`.
 
 ## Verifica
 Da questo ambiente si può verificare la build e le funzioni pure. Login Google, database reale, Realtime e Siri si provano solo sull'app pubblicata: indicalo chiaramente nel riepilogo e dì a Marco cosa controllare.

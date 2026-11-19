@@ -5,7 +5,8 @@
 - Colonne: Prima o poi, Questo mese, Questa settimana, Oggi, Fatto.
 - Ogni task ha: titolo, colonna, label, stima del tempo, importante, ricorrenza, note, scadenza.
 - Fatto mostra gli ultimi 7 giorni; lo storico resta per le analytics.
-- Un interruttore "Nascondi i task completati" (nella riga dei filtri, accanto alla ricerca) nasconde la colonna Fatto, e su telefono anche la sua linguetta. Completare un task con il cerchietto funziona lo stesso: il task esce dalla vista e si ritrova riaccendendo l'interruttore. La scelta resta salvata su quel dispositivo (nel browser) e "Azzera filtri" non la cambia.
+- Il pulsante "Colonne" (nella riga dei filtri, accanto alla ricerca) apre un menu con un interruttore per ogni colonna e il numero di task che contiene: spegnendolo la colonna sparisce, e su telefono anche la sua linguetta. Il pulsante mostra quante colonne sono nascoste ("Colonne · 1 nascosta"). Almeno una colonna resta sempre visibile. La scelta resta salvata su quel dispositivo (nel browser) e "Azzera filtri" non la cambia. (Prima della v0.10 c'era solo l'interruttore "Nascondi i task completati": chi l'aveva acceso ritrova Fatto nascosta.)
+- **Colonne nascoste, cosa succede ai task:** completare un task con il cerchietto funziona lo stesso anche se Fatto è nascosta. Un task di Prima o poi con una scadenza scelta da te passa da solo in Questo mese quando arriva il mese della scadenza, quindi nascondere Prima o poi non fa perdere nulla di datato; gli scaduti compaiono comunque in Oggi. Le ricorrenze "in attesa" stanno in Prima o poi e si vedono solo se la colonna è visibile.
 - Su telefono si vede una colonna alla volta, con linguette per cambiare.
 
 ## Scadenze e scaduti
@@ -17,8 +18,8 @@
 - **Etichette:** i task nelle altre colonne mostrano "Scade oggi", "Scade domani" o, per le scadenze scelte da te, "Scade il 10 dic".
 
 ## Ricorrenti
-Frequenze: ogni giorno, settimana, mese, anno. Al completamento di un task ricorrente nasce subito la prossima occorrenza, ma **non compare subito nella sua colonna**: resta "in attesa" fino all'inizio del suo periodo.
-- **Quando riappare:** ogni giorno → il giorno dopo, in Oggi; ogni settimana → il lunedì successivo, in Questa settimana; ogni mese → il primo del mese dopo, in Questo mese; ogni anno → il primo del mese di scadenza, in Questo mese.
+Frequenze: ogni giorno, settimana, mese, anno, oppure "Personalizzata…": ogni N giorni, settimane, mesi o anni (N da 1 a 99; per esempio ogni 2 anni). Nel database si salva come numero + lettera (`2y`, `3w`, `6m`, `10d`); con N = 1 si usa il valore standard. Al completamento di un task ricorrente nasce subito la prossima occorrenza, ma **non compare subito nella sua colonna**: resta "in attesa" fino all'inizio del suo periodo.
+- **Quando riappare:** ogni giorno → il giorno dopo, in Oggi; ogni settimana → il lunedì successivo, in Questa settimana; ogni mese → il primo del mese dopo, in Questo mese; ogni anno → il primo del mese di scadenza, in Questo mese. Le personalizzate seguono la stessa regola della loro unità: ogni N giorni → il giorno della scadenza, in Oggi; ogni N settimane → il lunedì della settimana di scadenza; ogni N mesi e ogni N anni → il primo del mese di scadenza, in Questo mese.
 - **Nuova scadenza:** parte dalla scadenza del task completato, non dal giorno in cui lo si chiude, e va avanti finché cade dopo il periodo in corso (un task chiuso in ritardo non riappare già scaduto). Un giorno di fine mese resta di fine mese.
 - **In attesa:** si vede in Prima o poi, in grigio e tratteggiato, con "Riappare il 1 dic" (o "domani"). Si può aprire, modificare o eliminare, e così si ferma la ricorrenza. Non entra nei conteggi delle colonne né nel carico aperto delle analytics. Alla data prevista si sposta da solo nella colonna giusta. Trascinarlo in una colonna, o cambiarne la colonna nella scheda, lo attiva subito.
 - **Icona:** i task ricorrenti hanno una piccola ↻ accanto al titolo.
@@ -47,7 +48,7 @@ Ogni sera arriva una email semplice, mandata con Resend da una attività pianifi
 Si manda anche a giornata vuota. Con `?dry=1` l'API mostra l'anteprima senza inviare. Variabili d'ambiente: `RESEND_API_KEY`, `DIGEST_TO`, `DIGEST_FROM` (facoltativa), `CRON_SECRET`.
 
 ## Modello dati
-- `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly|yearly), note, due, source, prev_col, created_at, done_at, starts_on` (`starts_on`: data da cui un'occorrenza ricorrente diventa attiva; prima di quella data è "in attesa")
+- `tasks`: `title, col (later|month|week|today|done), labels uuid[], est (minuti), important, recurring (none|daily|weekly|monthly|yearly, oppure N + d/w/m/y come `2y`), note, due, source, prev_col, created_at, done_at, starts_on` (`starts_on`: data da cui un'occorrenza ricorrente diventa attiva; prima di quella data è "in attesa")
 - `labels`: `name, color (0–7)`
 - `proposals`: `title, labels uuid[], source, sender, subject, reason, confidence (alta|media|bassa), status (new|accepted|dismissed), link, source_key, created_at, decided_at`
 
