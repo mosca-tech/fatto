@@ -5,6 +5,7 @@
 - Colonne: Prima o poi, Questo mese, Questa settimana, Oggi, Fatto.
 - Ogni task ha: titolo, colonna, label, stima del tempo, importante, ricorrenza, note, scadenza.
 - Fatto mostra gli ultimi 7 giorni; lo storico resta per le analytics.
+- Un interruttore "Nascondi i task completati" (nella riga dei filtri, accanto alla ricerca) nasconde la colonna Fatto, e su telefono anche la sua linguetta. Completare un task con il cerchietto funziona lo stesso: il task esce dalla vista e si ritrova riaccendendo l'interruttore. La scelta resta salvata su quel dispositivo (nel browser) e "Azzera filtri" non la cambia.
 - Su telefono si vede una colonna alla volta, con linguette per cambiare.
 
 ## Scadenze e scaduti
