@@ -14,7 +14,7 @@ export function initBoard(sb){
 
   var tasks=new Map(), labels=new Map(), props=new Map(), db=null, seq=0;
   var filter={labels:new Set(),important:false,late:false,q:''};
-  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today';
+  var mobileCol='today', weekOffset=0, editingId=null, delArmed=false, propsHidden=false, dueMove=null, dlgCol='today', hideDone=false;
 
   var $=function(id){return document.getElementById(id)};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -60,6 +60,7 @@ export function initBoard(sb){
 
   try{ var saved=JSON.parse(localStorage.getItem('bacheca.filter')||'null'); if(saved){filter.labels=new Set(saved.labels||[]); filter.important=!!saved.important; if(saved.col) mobileCol=saved.col} }catch(e){}
   try{ propsHidden=localStorage.getItem('bacheca.propsHidden')==='1' }catch(e){}
+  try{ hideDone=localStorage.getItem('bacheca.hideDone')==='1' }catch(e){}
   function persist(){ try{localStorage.setItem('bacheca.filter',JSON.stringify({labels:Array.from(filter.labels),important:filter.important,col:mobileCol}))}catch(e){} }
 
   /* ---------- store (Supabase) ---------- */
@@ -234,15 +235,18 @@ export function initBoard(sb){
   }
   function renderBoard(){
     var tabs='';
+    if(hideDone&&mobileCol==='done'){ mobileCol='today'; persist() }
+    $('board').classList.toggle('nodone',hideDone);
     COLS.forEach(function(c){
       var items=colTasks(c.id), active=items.filter(function(x){return !isPending(x.t)}), mins=active.reduce(function(s,x){return s+(x.t.est||0)},0);
       $('stat-'+c.id).textContent=active.length+(mins?' · '+fmt(mins):'');
       $('list-'+c.id).innerHTML=items.length?items.map(function(x){return cardHTML(x.id,x.t)}).join(''):
         '<div class="empty">'+(c.id==='done'?'Niente completato negli ultimi 7 giorni.':'Nessun task qui.')+'</div>';
+      if(c.id==='done'&&hideDone) return;
       tabs+='<button type="button" role="tab" data-tab="'+c.id+'" aria-selected="'+(mobileCol===c.id)+'">'+esc(c.name)+'<span class="n">'+active.length+'</span></button>';
     });
     $('coltabs').innerHTML=tabs;
-    document.querySelectorAll('.col').forEach(function(el){el.classList.toggle('active',el.dataset.col===mobileCol)});
+    document.querySelectorAll('.col').forEach(function(el){el.classList.toggle('active',el.dataset.col===mobileCol); el.hidden=hideDone&&el.dataset.col==='done'});
   }
   function renderFilters(){
     var h='<span class="lbl">Filtra</span>';
@@ -255,10 +259,12 @@ export function initBoard(sb){
     var lateN=0; tasks.forEach(function(t){ if(isLate(t)) lateN++ });
     if(lateN||filter.late) h+='<button class="chip" type="button" style="--lc:var(--danger)" id="f-late" aria-pressed="'+filter.late+'"><span class="dot"></span>Scaduti · '+lateN+'</button>';
     if(filter.labels.size||filter.important||filter.late||filter.q) h+='<button class="btn ghost" type="button" id="f-clear">Azzera filtri</button>';
-    h+='<span style="flex:1"></span><input id="search" type="search" placeholder="Cerca…" aria-label="Cerca nei task" value="'+esc(filter.q)+'">';
-    var had=document.activeElement&&document.activeElement.id==='search', pos=had?document.activeElement.selectionStart:0;
+    h+='<span style="flex:1"></span><button class="switch" type="button" id="toggle-done" role="switch" aria-checked="'+hideDone+'"><span class="track"><span class="knob"></span></span><span>Nascondi i task completati</span></button>';
+    h+='<input id="search" type="search" placeholder="Cerca…" aria-label="Cerca nei task" value="'+esc(filter.q)+'">';
+    var ae=document.activeElement, had=ae&&ae.id==='search', pos=had?ae.selectionStart:0, hadSwitch=ae&&ae.id==='toggle-done';
     $('filters').innerHTML=h;
     if(had){var s=$('search'); s.focus(); try{s.setSelectionRange(pos,pos)}catch(e){}}
+    if(hadSwitch) $('toggle-done').focus();
   }
   function sortedLabels(){
     var arr=[]; labels.forEach(function(l,id){arr.push({id:id,l:l})});
@@ -466,6 +472,11 @@ export function initBoard(sb){
   });
 
   $('filters').addEventListener('click',function(e){
+    if(e.target.closest('#toggle-done')){
+      hideDone=!hideDone;
+      try{localStorage.setItem('bacheca.hideDone',hideDone?'1':'0')}catch(err){}
+      renderAll(); return;
+    }
     var b=e.target.closest('[data-flabel]');
     if(b){var id=b.dataset.flabel; if(filter.labels.has(id)) filter.labels.delete(id); else filter.labels.add(id)}
     else if(e.target.closest('#f-important')) filter.important=!filter.important;
