@@ -26,6 +26,7 @@ Non ci sono test automatici. Le funzioni pure in `lib/api.js` (per esempio `pars
 - `app/api/tasks/route.js` — `POST`: crea un task (Siri, automazioni). Accetta campi separati oppure `text`, una frase dettata.
 - `app/api/proposals/route.js` — `GET`/`POST`: proposte dell'agente email.
 - `lib/api.js` — autorizzazione delle API, scadenze, lettura delle frasi dettate.
+- `app/api/calendar/route.js`, `lib/calendar.js` — calendario in abbonamento (.ics) dei task con "Mostra nel calendario"; token `CALENDAR_TOKEN` nell'indirizzo. `lib/calendar.js` è puro, si prova con uno script Node.
 - `app/api/digest/route.js`, `lib/digest.js`, `vercel.json` — riepilogo di fine giornata per email: il cron di Vercel chiama `GET /api/digest`, `lib/digest.js` costruisce il messaggio (funzioni pure, si provano con uno script Node) e lo invia con Resend.
 - `supabase/schema.sql` — tabelle, permessi, regole di accesso. Rieseguibile.
 - `docs/specifiche.md` — regole di funzionamento e roadmap.
