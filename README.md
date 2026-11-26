@@ -74,7 +74,7 @@ In alternativa si può mandare una frase intera, come la detta Siri: `{"text":"c
 
 Nelle frasi dettate sono capiti anche `domani`, `dopodomani`, i giorni della settimana (`entro venerdì`) e `la prossima settimana`: la scadenza è quella detta e la colonna viene scelta di conseguenza. La risposta contiene `message`, la frase che Siri legge, e `unknownLabels` se una label detta non esiste.
 
-Agente email: `GET /api/proposals` restituisce i `sourceKey` già visti; `POST /api/proposals` con `{"proposals":[...]}` aggiunge proposte, ignorando i doppioni.
+Agente email: `GET /api/proposals` restituisce i `sourceKeys` già visti, i task (aperti, in attesa, completati negli ultimi 30 giorni) e le proposte recenti, così l'agente non ripropone ciò che è già in bacheca; `POST /api/proposals` con `{"proposals":[...]}` aggiunge proposte, ignorando i `sourceKey` già visti e i titoli identici a task aperti o proposte in attesa (elencati in `skipped`). Istruzioni dell'agente: `docs/agente-email.md`.
 
 ## Da fare
 
